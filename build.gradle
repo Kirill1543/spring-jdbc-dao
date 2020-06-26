@@ -1,9 +1,13 @@
-plugins {
-    id 'java'
-}
-
 allprojects {
     repositories {
+        mavenLocal()
         mavenCentral()
+    }
+}
+
+subprojects {
+    apply plugin: 'java'
+    test {
+        useJUnitPlatform()
     }
 }
