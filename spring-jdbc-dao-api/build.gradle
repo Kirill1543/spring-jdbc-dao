@@ -1,0 +1,8 @@
+plugins {
+    id 'java'
+}
+
+dependencies {
+    implementation 'com.google.code.findbugs:jsr305:3.0.2'
+    compileOnly 'org.springframework:spring-jdbc:5.2.7.RELEASE'
+}
