@@ -11,3 +11,7 @@ subprojects {
         useJUnitPlatform()
     }
 }
+
+wrapper {
+    gradleVersion = '6.5.1'
+}
