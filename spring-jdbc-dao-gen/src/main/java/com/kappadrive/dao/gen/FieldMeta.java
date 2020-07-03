@@ -1,37 +1,23 @@
 package com.kappadrive.dao.gen;
 
-import javax.lang.model.element.VariableElement;
+import lombok.Builder;
+import lombok.Getter;
 
+import javax.lang.model.element.ExecutableElement;
+import javax.lang.model.element.VariableElement;
+import javax.lang.model.type.TypeMirror;
+
+@Getter
+@Builder
 public class FieldMeta {
 
     private final VariableElement field;
-
-    public FieldMeta(VariableElement field) {
-        this.field = field;
-    }
-
-    public VariableElement getField() {
-        return field;
-    }
-
-    public static Builder builder() {
-        return new Builder();
-    }
-
-    public static class Builder {
-
-        private VariableElement field;
-
-        private Builder() {
-        }
-
-        public Builder field(VariableElement field) {
-            this.field = field;
-            return this;
-        }
-
-        public FieldMeta build() {
-            return new FieldMeta(field);
-        }
-    }
+    private final TypeMirror type;
+    private final ExecutableElement getter;
+    private final ExecutableElement setter;
+    private final String name;
+    private final String columnName;
+    private final Integer sqlType;
+    private final boolean isKey;
+    private final boolean isGenerated;
 }

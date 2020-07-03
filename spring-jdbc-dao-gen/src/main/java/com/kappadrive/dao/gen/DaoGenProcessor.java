@@ -3,14 +3,24 @@ package com.kappadrive.dao.gen;
 import com.google.auto.service.AutoService;
 import com.kappadrive.dao.api.GenerateDao;
 import com.kappadrive.dao.api.JdbcDao;
+import com.kappadrive.dao.gen.tool.AnnotationUtil;
+import com.kappadrive.dao.gen.tool.GenerateUtil;
 import com.squareup.javapoet.ClassName;
+import com.squareup.javapoet.CodeBlock;
 import com.squareup.javapoet.JavaFile;
 import com.squareup.javapoet.MethodSpec;
 import com.squareup.javapoet.ParameterSpec;
+import com.squareup.javapoet.ParameterizedTypeName;
 import com.squareup.javapoet.TypeName;
 import com.squareup.javapoet.TypeSpec;
 import com.squareup.javapoet.TypeVariableName;
+import org.springframework.dao.support.DataAccessUtils;
+import org.springframework.jdbc.core.BeanPropertyRowMapper;
+import org.springframework.jdbc.core.RowMapper;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
+import org.springframework.jdbc.core.namedparam.SqlParameterSource;
+import org.springframework.jdbc.core.simple.SimpleJdbcInsert;
 import org.springframework.stereotype.Repository;
 
 import javax.annotation.Nonnull;
@@ -28,24 +38,34 @@ import javax.lang.model.element.PackageElement;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.element.VariableElement;
 import javax.lang.model.type.DeclaredType;
-import javax.lang.model.type.ExecutableType;
 import javax.lang.model.type.TypeMirror;
 import javax.lang.model.util.ElementKindVisitor9;
 import javax.lang.model.util.Types;
+import javax.persistence.Id;
+import javax.persistence.Table;
 import javax.tools.Diagnostic;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
+import java.util.stream.StreamSupport;
 
 @SupportedAnnotationTypes("com.kappadrive.dao.api.GenerateDao")
 @SupportedSourceVersion(SourceVersion.RELEASE_11)
 @AutoService(Processor.class)
 public class DaoGenProcessor extends AbstractProcessor {
 
+    private static final String TEMPLATE_NAME = "template";
+    private static final String PARAM_SOURCE = "paramSource";
+    private GenerateUtil generateUtil;
+
     @Override
     public boolean process(Set<? extends TypeElement> annotations, RoundEnvironment roundEnv) {
+        generateUtil = new GenerateUtil(processingEnv);
         roundEnv.getElementsAnnotatedWith(GenerateDao.class).forEach(this::processRootElement);
         return true;
     }
@@ -55,31 +75,36 @@ public class DaoGenProcessor extends AbstractProcessor {
         ImplData implData = rootElement.accept(createElementVisitor(), null);
         MethodSpec constructor = MethodSpec.constructorBuilder()
                 .addModifiers(Modifier.PUBLIC)
-                .addParameter(ClassName.get(NamedParameterJdbcTemplate.class), "template")
-                .addStatement("this.$N = $N", "template", "template")
+                .addParameter(ClassName.get(NamedParameterJdbcTemplate.class), TEMPLATE_NAME)
+                .addStatement("this.$N = $N", TEMPLATE_NAME, TEMPLATE_NAME)
                 .build();
+
+        MethodSpec rowMapper = createRowMapperMethod(implData);
+        MethodSpec paramSource = createParamSourceMethod(implData);
 
         List<MethodSpec> daoMethods = implData.getDaoMethods()
                 .stream()
-                .map(e -> createDaoMethod(e, implData))
+                .map(e -> createDaoMethod(e, implData, rowMapper, paramSource))
                 .filter(Objects::nonNull)
                 .collect(Collectors.toList());
 
         TypeSpec impl = TypeSpec.classBuilder(implData.getInterfaceElement().getSimpleName() + "Impl")
                 .addModifiers(Modifier.PUBLIC)
-                .addAnnotation(GenerateUtil.createGeneratedAnnotation())
+                .addAnnotation(generateUtil.createGeneratedAnnotation())
                 .addAnnotation(Repository.class)
                 .addSuperinterface(implData.getInterfaceElement().asType())
-                .addField(TypeName.get(NamedParameterJdbcTemplate.class), "template",
+                .addField(TypeName.get(NamedParameterJdbcTemplate.class), TEMPLATE_NAME,
                         Modifier.PRIVATE, Modifier.FINAL)
                 .addMethod(constructor)
                 .addMethods(daoMethods)
+                .addMethod(rowMapper)
+                .addMethod(paramSource)
                 .build();
 
         JavaFile javaFile = JavaFile.builder(implData.getPackageName(), impl)
                 .build();
 
-        GenerateUtil.writeSafe(javaFile, processingEnv);
+        generateUtil.writeSafe(javaFile);
     }
 
     @Nonnull
@@ -88,123 +113,209 @@ public class DaoGenProcessor extends AbstractProcessor {
         return new ElementKindVisitor9<ImplData, Object>() {
             @Override
             public ImplData visitType(TypeElement e, Object o) {
-                List<DeclaredType> daoHierarchy = GenerateUtil.getInterfaceHierarchy(e, JdbcDao.class);
+                List<DeclaredType> daoHierarchy = generateUtil.getInterfaceHierarchy(e, JdbcDao.class);
                 if (daoHierarchy.isEmpty()) {
                     processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR, String.format("@%s must implement %s", GenerateDao.class.getName(), JdbcDao.class.getName()), e);
                     return null;
                 }
                 PackageElement packageElement = (PackageElement) e.getEnclosingElement();
                 List<? extends TypeMirror> typeArguments = daoHierarchy.get(0).getTypeArguments();
-                Collection<ExecutableElement> allMethods = GenerateUtil.getAllAbstractMethods(e);
-                DeclaredType entityType = GenerateUtil.resolveVarType(typeArguments.get(0), daoHierarchy, 0);
-                Collection<FieldMeta> allFields = GenerateUtil.getAllFields(entityType);
+                Collection<ExecutableElement> allMethods = generateUtil.getAllAbstractMethods(e);
+                DeclaredType entityType = generateUtil.resolveVarType(typeArguments.get(0), daoHierarchy, 0);
                 return ImplData.builder()
                         .packageName(packageElement.getQualifiedName().toString())
                         .interfaceElement(e)
                         .interfaceType((DeclaredType) e.asType())
                         .entityType(entityType)
-                        .idType(GenerateUtil.resolveVarType(typeArguments.get(1), daoHierarchy, 0))
-                        .fields(allFields)
+                        .idType(generateUtil.resolveVarType(typeArguments.get(1), daoHierarchy, 0))
+                        .entityMeta(createEntityMeta(entityType))
                         .daoMethods(allMethods)
                         .build();
             }
         };
     }
 
+    @Nonnull
+    private EntityMeta createEntityMeta(@Nonnull DeclaredType entityType) {
+        Collection<FieldMeta> allFields = generateUtil.getAllFields(entityType);
+        Collection<FieldMeta> keyFields = allFields.stream().filter(FieldMeta::isKey).collect(Collectors.toList());
+        if (keyFields.size() != 1) {
+            String exception = String.format("Exact 1 field in %s should be annotated with @%s", entityType, Id.class.getName());
+            processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR, exception);
+            throw new IllegalStateException(exception);
+        }
+        String tableName = AnnotationUtil.getAnnotationValue(entityType.asElement(), Table.class, "name", String.class)
+                .orElseGet(() -> entityType.asElement().getSimpleName().toString().toLowerCase());
+        return EntityMeta.builder()
+                .tableName(tableName)
+                .fields(allFields)
+                .keyFields(keyFields)
+                .build();
+    }
+
     @Nullable
-    public MethodSpec createDaoMethod(@Nonnull ExecutableElement executableElement, @Nonnull ImplData implData) {
+    public MethodSpec createDaoMethod(@Nonnull ExecutableElement executableElement, @Nonnull ImplData implData, MethodSpec rowMapper, MethodSpec paramSource) {
         switch (executableElement.getSimpleName().toString()) {
             case "findAll":
-                return createFindAllMethod(executableElement, implData);
+                return createFindAllMethod(executableElement, implData, rowMapper, paramSource);
             case "findById":
-                return createFindByIdMethod(executableElement, implData);
+                return createFindByIdMethod(executableElement, implData, rowMapper);
             case "insert":
-                return createInsertMethod(executableElement, implData);
+                return createInsertMethod(executableElement, implData, rowMapper);
             case "insertAll":
-                return createInsertAllMethod(executableElement, implData);
+                return createInsertAllMethod(executableElement, implData, rowMapper);
             case "update":
-                return createUpdateMethod(executableElement, implData);
+                return createUpdateMethod(executableElement, implData, rowMapper);
             case "updateAll":
-                return createUpdateAllMethod(executableElement, implData);
+                return createUpdateAllMethod(executableElement, implData, rowMapper);
             case "delete":
-                return createDeleteMethod(executableElement, implData);
+                return createDeleteMethod(executableElement, implData, rowMapper);
             case "deleteAllById":
-                return createDeleteAllByIdMethod(executableElement, implData);
+                return createDeleteAllByIdMethod(executableElement, implData, rowMapper);
             case "deleteAll":
-                return createDeleteAll(executableElement, implData);
+                return createDeleteAll(executableElement, implData, rowMapper);
             case "exists":
-                return createExists(executableElement, implData);
+                return createExists(executableElement, implData, rowMapper);
             default:
                 return null;
         }
     }
 
     @Nonnull
-    private MethodSpec createFindAllMethod(@Nonnull ExecutableElement executableElement, @Nonnull ImplData implData) {
-        return methodBuilder(executableElement, implData)
-                .addStatement("return null")
+    private MethodSpec createParamSourceMethod(@Nonnull ImplData implData) {
+        MethodSpec.Builder builder = MethodSpec.methodBuilder("createParamSource")
+                .returns(SqlParameterSource.class)
+                .addModifiers(Modifier.PRIVATE, Modifier.STATIC)
+                .addAnnotation(Nonnull.class)
+                .addStatement("final var params = new $T()", MapSqlParameterSource.class);
+        implData.getEntityMeta().getFields()
+                .forEach(f -> {
+                    if (f.getSqlType() != null) {
+                        builder.addStatement("params.registerSqlType($S, $L)",
+                                f.getName(),
+                                f.getSqlType());
+                    }
+                });
+        return builder.addStatement("return params").build();
+    }
+
+    @Nonnull
+    private MethodSpec createRowMapperMethod(@Nonnull ImplData implData) {
+        return MethodSpec.methodBuilder("createRowMapper")
+                .returns(ParameterizedTypeName.get(
+                        ClassName.get(RowMapper.class),
+                        TypeName.get(implData.getEntityType())))
+                .addModifiers(Modifier.PRIVATE, Modifier.STATIC)
+                .addAnnotation(Nonnull.class)
+                .addStatement("return $T.newInstance($T.class)", BeanPropertyRowMapper.class, implData.getEntityType())
                 .build();
     }
 
     @Nonnull
-    private MethodSpec createFindByIdMethod(@Nonnull ExecutableElement executableElement, @Nonnull ImplData implData) {
+    private MethodSpec createFindAllMethod(@Nonnull ExecutableElement executableElement, @Nonnull ImplData implData,
+                                           @Nonnull MethodSpec rowMapper, @Nonnull MethodSpec paramSource) {
+        String query = String.format("SELECT * FROM %s",
+                implData.getEntityMeta().getTableName());
         return methodBuilder(executableElement, implData)
-                .addStatement("return null")
+                .addStatement("return $N.query($S, $N(), $N())",
+                        TEMPLATE_NAME, query, paramSource, rowMapper)
                 .build();
     }
 
     @Nonnull
-    private MethodSpec createInsertMethod(@Nonnull ExecutableElement executableElement, @Nonnull ImplData implData) {
+    private MethodSpec createFindByIdMethod(@Nonnull ExecutableElement executableElement, @Nonnull ImplData implData, @Nonnull MethodSpec rowMapper) {
+        String query = String.format("SELECT * FROM %s WHERE %s",
+                implData.getEntityMeta().getTableName(),
+                generateUtil.createIdCondition(implData));
+        return methodBuilder(executableElement, implData)
+                .addStatement(generateUtil.createParamSourceFromId(executableElement, PARAM_SOURCE, implData, FieldMeta::isKey))
+                .addStatement("return $T.ofNullable($T.singleResult($N.query($S, $N, $N())))",
+                        TypeName.get(Optional.class), TypeName.get(DataAccessUtils.class),
+                        TEMPLATE_NAME, query, PARAM_SOURCE, rowMapper)
+                .build();
+    }
+
+    @Nonnull
+    private MethodSpec createInsertMethod(@Nonnull ExecutableElement executableElement, @Nonnull ImplData implData, MethodSpec rowMapper) {
+        CodeBlock paramSource = generateUtil.createParamSourceFromEntity(executableElement, PARAM_SOURCE, implData, Predicate.not(FieldMeta::isGenerated));
+        Collection<String> generatedKeys = implData.getEntityMeta().getFields().stream()
+                .filter(FieldMeta::isGenerated)
+                .map(FieldMeta::getColumnName)
+                .collect(Collectors.toList());
+        String generatedKeysLiteral = generatedKeys.stream()
+                .collect(Collectors.joining("\", \"", "\"", "\""));
         MethodSpec.Builder builder = methodBuilder(executableElement, implData)
-                .addStatement("return null");
+                .addStatement(paramSource)
+                .addStatement(CodeBlock.builder()
+                        .add("final var keys = new $T($N.getJdbcTemplate())", SimpleJdbcInsert.class, TEMPLATE_NAME)
+                        .add("\n.withTableName($S)", implData.getEntityMeta().getTableName())
+                        .add("\n.usingGeneratedKeyColumns($L)", generatedKeysLiteral)
+                        .add("\n.executeAndReturnKeyHolder($N)", PARAM_SOURCE)
+                        .add("\n.getKeys()")
+                        .build())
+                .addCode(generateUtil.createEntityOnInsert(executableElement, "keys", implData));
         TypeVariableName typeVariableName = builder.typeVariables.get(0);
         builder.typeVariables.set(0, TypeVariableName.get(typeVariableName.name, TypeName.get(implData.getEntityType())));
         return builder.build();
     }
 
     @Nonnull
-    private MethodSpec createInsertAllMethod(@Nonnull ExecutableElement executableElement, @Nonnull ImplData implData) {
+    private MethodSpec createInsertAllMethod(@Nonnull ExecutableElement executableElement, @Nonnull ImplData implData, MethodSpec rowMapper) {
         MethodSpec.Builder builder = methodBuilder(executableElement, implData)
-                .addStatement("return null");
+                .addStatement(CodeBlock.builder()
+                        .add("return $T.stream($L.spliterator(), false)\n", StreamSupport.class, executableElement.getParameters().get(0))
+                        .add(".map(this::insert)\n")
+                        .add(".collect($T.toList())", Collectors.class)
+                        .build());
         TypeVariableName typeVariableName = builder.typeVariables.get(0);
         builder.typeVariables.set(0, TypeVariableName.get(typeVariableName.name, TypeName.get(implData.getEntityType())));
         return builder.build();
     }
 
     @Nonnull
-    private MethodSpec createUpdateMethod(@Nonnull ExecutableElement executableElement, @Nonnull ImplData implData) {
+    private MethodSpec createUpdateMethod(@Nonnull ExecutableElement executableElement, @Nonnull ImplData implData, MethodSpec rowMapper) {
         return methodBuilder(executableElement, implData)
                 .build();
     }
 
     @Nonnull
-    private MethodSpec createUpdateAllMethod(@Nonnull ExecutableElement executableElement, @Nonnull ImplData implData) {
+    private MethodSpec createUpdateAllMethod(@Nonnull ExecutableElement executableElement, @Nonnull ImplData implData, MethodSpec rowMapper) {
         return methodBuilder(executableElement, implData)
+                .addStatement("$L.forEach(this::update)", executableElement.getParameters().get(0))
                 .build();
     }
 
     @Nonnull
-    private MethodSpec createDeleteMethod(@Nonnull ExecutableElement executableElement, @Nonnull ImplData implData) {
+    private MethodSpec createDeleteMethod(@Nonnull ExecutableElement executableElement, @Nonnull ImplData implData, MethodSpec rowMapper) {
+        CodeBlock paramSource = generateUtil.createParamSourceFromId(executableElement, PARAM_SOURCE, implData, FieldMeta::isKey);
+        String query = String.format("DELETE FROM %s WHERE %s",
+                implData.getEntityMeta().getTableName(),
+                generateUtil.createIdCondition(implData));
         return methodBuilder(executableElement, implData)
+                .addStatement(paramSource)
+                .addStatement("$L.update($S, $N)", TEMPLATE_NAME, query, PARAM_SOURCE)
                 .build();
     }
 
     @Nonnull
-    private MethodSpec createDeleteAllByIdMethod(@Nonnull ExecutableElement executableElement, @Nonnull ImplData implData) {
+    private MethodSpec createDeleteAllByIdMethod(@Nonnull ExecutableElement executableElement, @Nonnull ImplData implData, MethodSpec rowMapper) {
         return methodBuilder(executableElement, implData)
+                .addStatement("$L.forEach(this::delete)", executableElement.getParameters().get(0))
                 .build();
     }
 
     @Nonnull
-    private MethodSpec createDeleteAll(@Nonnull ExecutableElement executableElement, @Nonnull ImplData implData) {
+    private MethodSpec createDeleteAll(@Nonnull ExecutableElement executableElement, @Nonnull ImplData implData, MethodSpec rowMapper) {
         return methodBuilder(executableElement, implData)
+                .addStatement("$L.update($S, $T.emptyMap())",
+                        TEMPLATE_NAME, "DELETE FROM " + implData.getEntityMeta().getTableName(), Collections.class)
                 .build();
     }
 
     @Nonnull
-    private MethodSpec createExists(@Nonnull ExecutableElement executableElement, @Nonnull ImplData implData) {
+    private MethodSpec createExists(@Nonnull ExecutableElement executableElement, @Nonnull ImplData implData, MethodSpec rowMapper) {
         return methodBuilder(executableElement, implData)
-                .addStatement("return false")
+                .addStatement("return findById($L).isPresent()", executableElement.getParameters().get(0))
                 .build();
     }
 
@@ -212,16 +323,16 @@ public class DaoGenProcessor extends AbstractProcessor {
     private MethodSpec.Builder methodBuilder(@Nonnull ExecutableElement executableElement, @Nonnull ImplData implData) {
         Types types = processingEnv.getTypeUtils();
         MethodSpec.Builder builder = MethodSpec.overriding(executableElement, implData.getInterfaceType(), types)
-                .addAnnotations(GenerateUtil.getAnnotationSpecs(executableElement));
-        ExecutableType executableType = (ExecutableType) types.asMemberOf(implData.getInterfaceType(), executableElement);
-        List<? extends TypeMirror> resolvedParameterTypes = executableType.getParameterTypes();
+                .addAnnotations(AnnotationUtil.getAnnotationSpecs(executableElement));
+        List<? extends TypeMirror> resolvedParameterTypes = generateUtil.resolveGenericTypes(executableElement, implData.getInterfaceType());
         List<? extends VariableElement> declaredParameters = executableElement.getParameters();
         for (int i = 0, size = builder.parameters.size(); i < size; i++) {
             ParameterSpec parameter = builder.parameters.get(i);
             TypeName type = TypeName.get(resolvedParameterTypes.get(i));
-            ParameterSpec.Builder parameterBuilder = ParameterSpec.builder(type, parameter.name);
+            VariableElement declared = declaredParameters.get(i);
+            ParameterSpec.Builder parameterBuilder = ParameterSpec.builder(type, declared.getSimpleName().toString());
             parameterBuilder.modifiers.addAll(parameter.modifiers);
-            parameterBuilder.annotations.addAll(GenerateUtil.getAnnotationSpecs(declaredParameters.get(0)));
+            parameterBuilder.annotations.addAll(AnnotationUtil.getAnnotationSpecs(declared));
             builder.parameters.set(i, parameterBuilder.build());
         }
         return builder;

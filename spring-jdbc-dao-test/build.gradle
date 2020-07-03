@@ -1,0 +1,17 @@
+plugins {
+    id 'org.springframework.boot' version '2.3.1.RELEASE'
+    id 'io.spring.dependency-management' version '1.0.9.RELEASE'
+    id 'java'
+}
+
+dependencies {
+    implementation project(':spring-jdbc-dao-api')
+    compileOnly 'org.projectlombok:lombok:1.18.12'
+    annotationProcessor 'org.projectlombok:lombok:1.18.12'
+    annotationProcessor project(':spring-jdbc-dao-gen')
+
+    implementation 'org.springframework.boot:spring-boot-starter-jdbc'
+    implementation 'com.h2database:h2:1.4.200'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}
