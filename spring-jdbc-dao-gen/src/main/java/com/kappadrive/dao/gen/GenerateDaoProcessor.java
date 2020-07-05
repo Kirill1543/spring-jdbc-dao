@@ -57,7 +57,7 @@ import java.util.stream.StreamSupport;
 @SupportedAnnotationTypes("com.kappadrive.dao.api.GenerateDao")
 @SupportedSourceVersion(SourceVersion.RELEASE_11)
 @AutoService(Processor.class)
-public class DaoGenProcessor extends AbstractProcessor {
+public class GenerateDaoProcessor extends AbstractProcessor {
 
     private static final String TEMPLATE_NAME = "template";
     private static final String PARAM_SOURCE = "paramSource";

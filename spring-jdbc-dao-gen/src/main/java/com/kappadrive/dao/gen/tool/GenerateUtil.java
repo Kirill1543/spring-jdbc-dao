@@ -1,7 +1,7 @@
 package com.kappadrive.dao.gen.tool;
 
 import com.kappadrive.dao.api.ColumnType;
-import com.kappadrive.dao.gen.DaoGenProcessor;
+import com.kappadrive.dao.gen.GenerateDaoProcessor;
 import com.kappadrive.dao.gen.FieldMeta;
 import com.kappadrive.dao.gen.ImplData;
 import com.squareup.javapoet.AnnotationSpec;
@@ -54,7 +54,7 @@ public final class GenerateUtil {
     @Nonnull
     public AnnotationSpec createGeneratedAnnotation() {
         return AnnotationSpec.builder(Generated.class)
-                .addMember("value", "$S", DaoGenProcessor.class.getName())
+                .addMember("value", "$S", GenerateDaoProcessor.class.getName())
                 .addMember("date", "$S", DateTimeFormatter.ISO_DATE_TIME.format(LocalDateTime.now()))
                 .build();
     }
