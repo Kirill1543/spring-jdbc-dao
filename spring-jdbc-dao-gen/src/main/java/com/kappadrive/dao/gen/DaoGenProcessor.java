@@ -306,7 +306,15 @@ public class DaoGenProcessor extends AbstractProcessor {
 
     @Nonnull
     private MethodSpec createUpdateMethod(@Nonnull ExecutableElement executableElement, @Nonnull ImplData implData) {
+        CodeBlock paramSource = generateUtil.createParamSourceFromEntity(executableElement, PARAM_SOURCE, implData, Predicate.not(FieldMeta::isGenerated));
+        String query = String.format("UPDATE %s SET %s WHERE %s",
+                implData.getEntityMeta().getTableName(),
+                generateUtil.createCondition(implData.getEntityMeta().getFields()
+                        .stream().filter(f -> !f.isGenerated() && !f.isKey()).collect(Collectors.toList())),
+                generateUtil.createCondition(implData.getEntityMeta().getKeyFields()));
         return methodBuilder(executableElement, implData)
+                .addStatement(paramSource)
+                .addStatement("this.$N.update($S, $N)", TEMPLATE_NAME, query, PARAM_SOURCE)
                 .build();
     }
 
