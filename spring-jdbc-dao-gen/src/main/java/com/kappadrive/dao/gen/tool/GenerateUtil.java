@@ -7,6 +7,7 @@ import com.kappadrive.dao.gen.ImplData;
 import com.squareup.javapoet.AnnotationSpec;
 import com.squareup.javapoet.CodeBlock;
 import com.squareup.javapoet.JavaFile;
+import com.squareup.javapoet.MethodSpec;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.util.StringUtils;
 
@@ -308,22 +309,20 @@ public final class GenerateUtil {
 
     @Nonnull
     public CodeBlock createParamSourceFromComplexType(
-            @Nonnull final ExecutableElement executableElement,
+            @Nonnull final Object type,
             @Nonnull final String paramSource,
-            @Nonnull final ImplData implData,
-            @Nonnull final Predicate<? super FieldMeta> filter
+            @Nonnull final ImplData implData
     ) {
-        VariableElement param = executableElement.getParameters().get(0);
         CodeBlock.Builder builder = CodeBlock.builder()
                 .add("final var $N = new $T()", paramSource, MapSqlParameterSource.class);
-        implData.getEntityMeta().getFields().stream()
-                .filter(filter)
+        implData.getEntityMeta()
+                .getFields()
                 .forEach(f -> {
                     String paramName = f.getColumnName();
                     if (f.getSqlType() == null) {
-                        builder.add("\n.addValue($S, $L.$L)", paramName, param, f.getGetter());
+                        builder.add("\n.addValue($S, $L.$L)", paramName, type, f.getGetter());
                     } else {
-                        builder.add("\n.addValue($S, $L.$L, $L)", paramName, param, f.getGetter(), f.getSqlType());
+                        builder.add("\n.addValue($S, $L.$L, $L)", paramName, type, f.getGetter(), f.getSqlType());
                     }
                 });
         return builder.build();
@@ -372,14 +371,10 @@ public final class GenerateUtil {
             @Nonnull final ExecutableElement executableElement,
             @Nonnull final String paramSource,
             @Nonnull final ImplData implData,
-            @Nonnull final Predicate<? super FieldMeta> filter
+            @Nonnull final MethodSpec paramSourceMethod
     ) {
-        List<? extends VariableElement> parameters = executableElement.getParameters();
-        if (parameters.size() == 1
-                && processingEnv.getTypeUtils().isSubtype(
-                resolveGenericTypes(executableElement, implData.getInterfaceType()).get(0),
-                implData.getEntityType())) {
-            return createParamSourceFromComplexType(executableElement, paramSource, implData, filter);
+        if (hasSingleParameter(executableElement, implData, implData.getEntityType())) {
+            return CodeBlock.of("final var $N = $N($L)", paramSource, paramSourceMethod, executableElement.getParameters().get(0));
         } else {
             return createParamSourceFromParameters(executableElement, paramSource, implData);
         }
@@ -392,15 +387,21 @@ public final class GenerateUtil {
             @Nonnull final ImplData implData,
             @Nonnull final Predicate<? super FieldMeta> filter
     ) {
-        List<? extends VariableElement> parameters = executableElement.getParameters();
-        if (parameters.size() == 1
-                && processingEnv.getTypeUtils().isSubtype(
-                resolveGenericTypes(executableElement, implData.getInterfaceType()).get(0),
-                implData.getIdType())) {
+        if (hasSingleParameter(executableElement, implData, implData.getIdType())) {
             return createParamSourceFromSimpleType(executableElement, paramSource, implData, filter);
         } else {
             return createParamSourceFromParameters(executableElement, paramSource, implData);
         }
+    }
+
+    public boolean hasSingleParameter(
+            @Nonnull ExecutableElement executableElement,
+            @Nonnull ImplData implData,
+            @Nonnull DeclaredType type
+    ) {
+        return executableElement.getParameters().size() == 1
+                && processingEnv.getTypeUtils().isSubtype(
+                resolveGenericTypes(executableElement, implData.getInterfaceType()).get(0), type);
     }
 
     @Nonnull

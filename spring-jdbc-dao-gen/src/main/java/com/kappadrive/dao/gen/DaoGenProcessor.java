@@ -17,7 +17,6 @@ import com.squareup.javapoet.TypeSpec;
 import com.squareup.javapoet.TypeVariableName;
 import org.springframework.dao.support.DataAccessUtils;
 import org.springframework.jdbc.core.RowMapper;
-import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.jdbc.core.namedparam.SqlParameterSource;
 import org.springframework.jdbc.core.simple.SimpleJdbcInsert;
@@ -52,7 +51,6 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
@@ -87,11 +85,11 @@ public class DaoGenProcessor extends AbstractProcessor {
                 "rowMapper", Modifier.PRIVATE, Modifier.FINAL)
                 .initializer("new $N()", rowMapperClass)
                 .build();
-        MethodSpec paramSource = createParamSourceMethod(implData);
+        MethodSpec paramSourceMethod = createParamSourceMethod(implData);
 
         List<MethodSpec> daoMethods = implData.getDaoMethods()
                 .stream()
-                .map(e -> createDaoMethod(e, implData, rowMapper, paramSource))
+                .map(e -> createDaoMethod(e, implData, rowMapper, paramSourceMethod))
                 .filter(Objects::nonNull)
                 .collect(Collectors.toList());
 
@@ -105,7 +103,7 @@ public class DaoGenProcessor extends AbstractProcessor {
                 .addMethod(constructor)
                 .addMethods(daoMethods)
                 .addType(rowMapperClass)
-                .addMethod(paramSource)
+                .addMethod(paramSourceMethod)
                 .build();
 
         JavaFile javaFile = JavaFile.builder(implData.getPackageName(), impl)
@@ -166,18 +164,19 @@ public class DaoGenProcessor extends AbstractProcessor {
     }
 
     @Nullable
-    public MethodSpec createDaoMethod(@Nonnull ExecutableElement executableElement, @Nonnull ImplData implData, FieldSpec rowMapper, MethodSpec paramSource) {
+    public MethodSpec createDaoMethod(@Nonnull ExecutableElement executableElement, @Nonnull ImplData implData,
+                                      @Nonnull FieldSpec rowMapper, @Nonnull MethodSpec paramSourceMethod) {
         switch (executableElement.getSimpleName().toString()) {
             case "findAll":
-                return createFindAllMethod(executableElement, implData, rowMapper, paramSource);
+                return createFindAllMethod(executableElement, implData, rowMapper);
             case "findById":
                 return createFindByIdMethod(executableElement, implData, rowMapper);
             case "insert":
-                return createInsertMethod(executableElement, implData);
+                return createInsertMethod(executableElement, implData, paramSourceMethod);
             case "insertAll":
                 return createInsertAllMethod(executableElement, implData);
             case "update":
-                return createUpdateMethod(executableElement, implData);
+                return createUpdateMethod(executableElement, implData, paramSourceMethod);
             case "updateAll":
                 return createUpdateAllMethod(executableElement, implData);
             case "delete":
@@ -195,20 +194,19 @@ public class DaoGenProcessor extends AbstractProcessor {
 
     @Nonnull
     private MethodSpec createParamSourceMethod(@Nonnull ImplData implData) {
-        MethodSpec.Builder builder = MethodSpec.methodBuilder("createParamSource")
+        String paramName = implData.getEntityType().asElement().getSimpleName().toString().toLowerCase().substring(0, 1);
+        ParameterSpec entityParameter = ParameterSpec.builder(TypeName.get(implData.getEntityType()), paramName)
+                .addAnnotation(Nonnull.class)
+                .build();
+        CodeBlock paramSource = generateUtil.createParamSourceFromComplexType(paramName, PARAM_SOURCE, implData);
+        return MethodSpec.methodBuilder("createParamSource")
                 .returns(SqlParameterSource.class)
                 .addModifiers(Modifier.PRIVATE, Modifier.STATIC)
+                .addParameter(entityParameter)
                 .addAnnotation(Nonnull.class)
-                .addStatement("final var params = new $T()", MapSqlParameterSource.class);
-        implData.getEntityMeta().getFields()
-                .forEach(f -> {
-                    if (f.getSqlType() != null) {
-                        builder.addStatement("params.registerSqlType($S, $L)",
-                                f.getName(),
-                                f.getSqlType());
-                    }
-                });
-        return builder.addStatement("return params").build();
+                .addStatement(paramSource)
+                .addStatement("return $N", PARAM_SOURCE)
+                .build();
     }
 
     @Nonnull
@@ -245,12 +243,12 @@ public class DaoGenProcessor extends AbstractProcessor {
 
     @Nonnull
     private MethodSpec createFindAllMethod(@Nonnull ExecutableElement executableElement, @Nonnull ImplData implData,
-                                           @Nonnull FieldSpec rowMapper, @Nonnull MethodSpec paramSource) {
+                                           @Nonnull FieldSpec rowMapper) {
         String query = String.format("SELECT * FROM %s",
                 implData.getEntityMeta().getTableName());
         return methodBuilder(executableElement, implData)
-                .addStatement("return this.$N.query($S, $N(), this.$N)",
-                        TEMPLATE_NAME, query, paramSource, rowMapper)
+                .addStatement("return this.$N.query($S, this.$N)",
+                        TEMPLATE_NAME, query, rowMapper)
                 .build();
     }
 
@@ -268,8 +266,9 @@ public class DaoGenProcessor extends AbstractProcessor {
     }
 
     @Nonnull
-    private MethodSpec createInsertMethod(@Nonnull ExecutableElement executableElement, @Nonnull ImplData implData) {
-        CodeBlock paramSource = generateUtil.createParamSourceFromEntity(executableElement, PARAM_SOURCE, implData, Predicate.not(FieldMeta::isGenerated));
+    private MethodSpec createInsertMethod(@Nonnull ExecutableElement executableElement, @Nonnull ImplData implData,
+                                          @Nonnull MethodSpec paramSourceMethod) {
+        CodeBlock paramSource = generateUtil.createParamSourceFromEntity(executableElement, PARAM_SOURCE, implData, paramSourceMethod);
         Collection<String> generatedKeys = implData.getEntityMeta().getFields().stream()
                 .filter(FieldMeta::isGenerated)
                 .map(FieldMeta::getColumnName)
@@ -305,8 +304,9 @@ public class DaoGenProcessor extends AbstractProcessor {
     }
 
     @Nonnull
-    private MethodSpec createUpdateMethod(@Nonnull ExecutableElement executableElement, @Nonnull ImplData implData) {
-        CodeBlock paramSource = generateUtil.createParamSourceFromEntity(executableElement, PARAM_SOURCE, implData, Predicate.not(FieldMeta::isGenerated));
+    private MethodSpec createUpdateMethod(@Nonnull ExecutableElement executableElement, @Nonnull ImplData implData,
+                                          @Nonnull MethodSpec paramSourceMethod) {
+        CodeBlock paramSource = generateUtil.createParamSourceFromEntity(executableElement, PARAM_SOURCE, implData, paramSourceMethod);
         String query = String.format("UPDATE %s SET %s WHERE %s",
                 implData.getEntityMeta().getTableName(),
                 generateUtil.createCondition(implData.getEntityMeta().getFields()
