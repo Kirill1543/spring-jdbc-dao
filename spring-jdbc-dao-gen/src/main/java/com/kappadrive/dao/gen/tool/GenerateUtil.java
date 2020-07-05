@@ -236,25 +236,25 @@ public final class GenerateUtil {
     public Optional<String> getResultSetGetter(@Nonnull final FieldMeta fieldMeta) {
         TypeMirror type = fieldMeta.getType();
         if (hasType(type, Long.class) || type.getKind() == TypeKind.LONG) {
-            return Optional.of("$L.getLong($S)");
+            return Optional.of("getLong($S)");
         } else if (hasType(type, Integer.class) || type.getKind() == TypeKind.INT) {
-            return Optional.of("$L.getInt($S)");
+            return Optional.of("getInt($S)");
         } else if (hasType(type, Short.class) || type.getKind() == TypeKind.SHORT) {
-            return Optional.of("$L.getShort($S)");
+            return Optional.of("getShort($S)");
         } else if (hasType(type, Byte.class) || type.getKind() == TypeKind.BYTE) {
-            return Optional.of("$L.getByte($S)");
+            return Optional.of("getByte($S)");
         } else if (hasType(type, Double.class) || type.getKind() == TypeKind.DOUBLE) {
-            return Optional.of("$L.getDouble($S)");
+            return Optional.of("getDouble($S)");
         } else if (hasType(type, Float.class) || type.getKind() == TypeKind.FLOAT) {
-            return Optional.of("$L.getFloat($S)");
+            return Optional.of("getFloat($S)");
         } else if (hasType(type, BigDecimal.class)) {
-            return Optional.of("$L.getBigDecimal($S)");
+            return Optional.of("getBigDecimal($S)");
         } else if (hasType(type, String.class)) {
-            return Optional.of("$L.getString($S)");
+            return Optional.of("getString($S)");
         } else if (hasType(type, LocalDate.class)) {
-            return Optional.of("$L.getDate($S).toLocalDate()");
+            return Optional.of("getDate($S).toLocalDate()");
         } else if (hasType(type, LocalDateTime.class)) {
-            return Optional.of("$L.getTimestamp($S).toLocalDateTime()");
+            return Optional.of("getTimestamp($S).toLocalDateTime()");
         } else {
             return Optional.empty();
         }

@@ -225,7 +225,7 @@ public class DaoGenProcessor extends AbstractProcessor {
 
         implData.getEntityMeta().getFields().forEach(f -> {
             generateUtil.getResultSetGetter(f).ifPresentOrElse(getter ->
-                            builder.addStatement("entity.$L(" + getter + ")",
+                            builder.addStatement("entity.$L($L." + getter + ")",
                                     f.getSetter().getSimpleName(), "rs", f.getColumnName()),
                     () -> {
                         if (generateUtil.isEnum(f.getType())) {
@@ -249,7 +249,7 @@ public class DaoGenProcessor extends AbstractProcessor {
         String query = String.format("SELECT * FROM %s",
                 implData.getEntityMeta().getTableName());
         return methodBuilder(executableElement, implData)
-                .addStatement("return $N.query($S, $N(), $N)",
+                .addStatement("return this.$N.query($S, $N(), this.$N)",
                         TEMPLATE_NAME, query, paramSource, rowMapper)
                 .build();
     }
@@ -261,7 +261,7 @@ public class DaoGenProcessor extends AbstractProcessor {
                 generateUtil.createIdCondition(implData));
         return methodBuilder(executableElement, implData)
                 .addStatement(generateUtil.createParamSourceFromId(executableElement, PARAM_SOURCE, implData, FieldMeta::isKey))
-                .addStatement("return $T.ofNullable($T.singleResult($N.query($S, $N, $N)))",
+                .addStatement("return $T.ofNullable($T.singleResult(this.$N.query($S, $N, this.$N)))",
                         TypeName.get(Optional.class), TypeName.get(DataAccessUtils.class),
                         TEMPLATE_NAME, query, PARAM_SOURCE, rowMapper)
                 .build();
@@ -279,7 +279,7 @@ public class DaoGenProcessor extends AbstractProcessor {
         MethodSpec.Builder builder = methodBuilder(executableElement, implData)
                 .addStatement(paramSource)
                 .addStatement(CodeBlock.builder()
-                        .add("final var keys = new $T($N.getJdbcTemplate())", SimpleJdbcInsert.class, TEMPLATE_NAME)
+                        .add("final var keys = new $T(this.$N.getJdbcTemplate())", SimpleJdbcInsert.class, TEMPLATE_NAME)
                         .add("\n.withTableName($S)", implData.getEntityMeta().getTableName())
                         .add("\n.usingGeneratedKeyColumns($L)", generatedKeysLiteral)
                         .add("\n.executeAndReturnKeyHolder($N)", PARAM_SOURCE)
@@ -325,7 +325,7 @@ public class DaoGenProcessor extends AbstractProcessor {
                 generateUtil.createIdCondition(implData));
         return methodBuilder(executableElement, implData)
                 .addStatement(paramSource)
-                .addStatement("$L.update($S, $N)", TEMPLATE_NAME, query, PARAM_SOURCE)
+                .addStatement("this.$N.update($S, $N)", TEMPLATE_NAME, query, PARAM_SOURCE)
                 .build();
     }
 
@@ -339,7 +339,7 @@ public class DaoGenProcessor extends AbstractProcessor {
     @Nonnull
     private MethodSpec createDeleteAll(@Nonnull ExecutableElement executableElement, @Nonnull ImplData implData) {
         return methodBuilder(executableElement, implData)
-                .addStatement("$L.update($S, $T.emptyMap())",
+                .addStatement("this.$N.update($S, $T.emptyMap())",
                         TEMPLATE_NAME, "DELETE FROM " + implData.getEntityMeta().getTableName(), Collections.class)
                 .build();
     }

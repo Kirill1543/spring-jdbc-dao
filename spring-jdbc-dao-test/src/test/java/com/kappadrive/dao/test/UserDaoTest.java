@@ -3,7 +3,6 @@ package com.kappadrive.dao.test;
 import com.kappadrive.dao.test.model.User;
 import com.kappadrive.dao.test.model.UserRole;
 import com.kappadrive.dao.test.repository.UserDao;
-import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
