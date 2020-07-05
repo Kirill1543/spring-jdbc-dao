@@ -25,7 +25,7 @@ class UserDaoTest {
     }
 
     @Test
-    void testInsert() {
+    void testInsertAndFind() {
         User user = new User();
         user.setName("User");
         user.setOtherName("Kyle");
@@ -33,10 +33,10 @@ class UserDaoTest {
         assertThat(inserted.getId()).isEqualTo(1);
         assertThat(userDao.findById(1L))
                 .isPresent()
-                .hasValueSatisfying(v -> assertAll(
-                        () -> assertThat(v.getName()).isEqualTo("User"),
-                        () -> assertThat(v.getOtherName()).isEqualTo("Kyle"),
-                        () -> assertThat(v.getRole()).isNull()
+                .hasValueSatisfying(u -> assertAll(
+                        () -> assertThat(u.getName()).isEqualTo("User"),
+                        () -> assertThat(u.getOtherName()).isEqualTo("Kyle"),
+                        () -> assertThat(u.getRole()).isNull()
                 ));
 
         user.setName("User2");
@@ -45,10 +45,62 @@ class UserDaoTest {
         assertThat(inserted2.getId()).isEqualTo(2);
         assertThat(userDao.findById(2L))
                 .isPresent()
-                .hasValueSatisfying(v -> assertAll(
-                        () -> assertThat(v.getName()).isEqualTo("User2"),
-                        () -> assertThat(v.getOtherName()).isEqualTo("Kyle"),
-                        () -> assertThat(v.getRole()).isEqualTo(UserRole.ADMIN)
+                .hasValueSatisfying(u -> assertAll(
+                        () -> assertThat(u.getName()).isEqualTo("User2"),
+                        () -> assertThat(u.getOtherName()).isEqualTo("Kyle"),
+                        () -> assertThat(u.getRole()).isEqualTo(UserRole.ADMIN)
                 ));
+    }
+
+    @Test
+    void testFindAll() {
+        User user = new User();
+        user.setName("Kyle");
+        user.setOtherName("Jersey");
+        userDao.insert(user);
+
+        assertThat(userDao.findAll())
+                .hasSize(1)
+                .containsExactly(user);
+
+        User user2 = new User();
+        user2.setName("Eric");
+        user2.setOtherName("Fat");
+        userDao.insert(user2);
+
+        assertThat(userDao.findAll())
+                .hasSize(2)
+                .containsExactly(user, user2);
+    }
+
+    @Test
+    void testUpdate() {
+        User user = new User();
+        user.setName("Kyle");
+        user.setOtherName("Jersey");
+        userDao.insert(user);
+
+        user.setRole(UserRole.ADMIN);
+        user.setOtherName("B");
+        userDao.update(user);
+
+        assertThat(userDao.findById(1L))
+                .isPresent()
+                .hasValueSatisfying(u -> assertAll(
+                        () -> assertThat(u.getName()).isEqualTo("Kyle"),
+                        () -> assertThat(u.getOtherName()).isEqualTo("B"),
+                        () -> assertThat(u.getRole()).isEqualTo(UserRole.ADMIN)
+                ));
+    }
+
+    @Test
+    void testDelete() {
+        User user = new User();
+        user.setName("Kyle");
+        user.setOtherName("Jersey");
+        userDao.insert(user);
+
+        userDao.delete(1L);
+        assertThat(userDao.findAll()).isEmpty();
     }
 }

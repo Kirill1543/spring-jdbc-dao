@@ -1,8 +1,8 @@
 package com.kappadrive.dao.gen.tool;
 
 import com.kappadrive.dao.api.ColumnType;
-import com.kappadrive.dao.gen.GenerateDaoProcessor;
 import com.kappadrive.dao.gen.FieldMeta;
+import com.kappadrive.dao.gen.GenerateDaoProcessor;
 import com.kappadrive.dao.gen.ImplData;
 import com.squareup.javapoet.AnnotationSpec;
 import com.squareup.javapoet.CodeBlock;
@@ -281,30 +281,15 @@ public final class GenerateUtil {
     }
 
     @Nonnull
-    public String createCondition(@Nonnull final Collection<FieldMeta> fields) {
+    public String createStatement(@Nonnull final Collection<FieldMeta> fields, @Nonnull final String delimiter) {
         return fields.stream()
                 .map(f -> String.format("%s = :%s", f.getColumnName(), f.getName()))
-                .collect(Collectors.joining(" AND "));
-    }
-
-    @Nonnull
-    public String createCondition(
-            @Nonnull final ExecutableElement executableElement,
-            @Nonnull final ImplData implData
-    ) {
-        return executableElement.getParameters().stream()
-                .map(v -> {
-                    String varName = v.getSimpleName().toString();
-                    return findFieldByName(implData, varName)
-                            .map(f -> String.format("%s = :%s", f.getColumnName(), f.getName()))
-                            .orElseThrow(() -> new IllegalArgumentException("No field found with name " + varName));
-                })
-                .collect(Collectors.joining(" AND "));
+                .collect(Collectors.joining(delimiter));
     }
 
     @Nonnull
     public String createIdCondition(@Nonnull final ImplData implData) {
-        return createCondition(implData.getEntityMeta().getKeyFields());
+        return createStatement(implData.getEntityMeta().getKeyFields(), " AND ");
     }
 
     @Nonnull
@@ -318,7 +303,7 @@ public final class GenerateUtil {
         implData.getEntityMeta()
                 .getFields()
                 .forEach(f -> {
-                    String paramName = f.getColumnName();
+                    String paramName = f.getName();
                     if (f.getSqlType() == null) {
                         builder.add("\n.addValue($S, $L.$L)", paramName, type, f.getGetter());
                     } else {

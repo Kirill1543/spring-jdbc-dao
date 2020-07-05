@@ -19,7 +19,7 @@ import org.springframework.dao.support.DataAccessUtils;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.jdbc.core.namedparam.SqlParameterSource;
-import org.springframework.jdbc.core.simple.SimpleJdbcInsert;
+import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.stereotype.Repository;
 
 import javax.annotation.Nonnull;
@@ -51,6 +51,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
@@ -269,21 +270,19 @@ public class GenerateDaoProcessor extends AbstractProcessor {
     private MethodSpec createInsertMethod(@Nonnull ExecutableElement executableElement, @Nonnull ImplData implData,
                                           @Nonnull MethodSpec paramSourceMethod) {
         CodeBlock paramSource = generateUtil.createParamSourceFromEntity(executableElement, PARAM_SOURCE, implData, paramSourceMethod);
-        Collection<String> generatedKeys = implData.getEntityMeta().getFields().stream()
-                .filter(FieldMeta::isGenerated)
-                .map(FieldMeta::getColumnName)
-                .collect(Collectors.toList());
-        String generatedKeysLiteral = generatedKeys.stream()
-                .collect(Collectors.joining("\", \"", "\"", "\""));
+        String insertFields = implData.getEntityMeta().getFields().stream()
+                .filter(Predicate.not(FieldMeta::isGenerated)).map(FieldMeta::getColumnName)
+                .collect(Collectors.joining(", "));
+        String insertValues = implData.getEntityMeta().getFields().stream()
+                .filter(Predicate.not(FieldMeta::isGenerated)).map(f -> ":" + f.getName())
+                .collect(Collectors.joining(", "));
+        String query = String.format("INSERT INTO %s (%s) VALUES (%s)",
+                implData.getEntityMeta().getTableName(), insertFields, insertValues);
         MethodSpec.Builder builder = methodBuilder(executableElement, implData)
                 .addStatement(paramSource)
-                .addStatement(CodeBlock.builder()
-                        .add("final var keys = new $T(this.$N.getJdbcTemplate())", SimpleJdbcInsert.class, TEMPLATE_NAME)
-                        .add("\n.withTableName($S)", implData.getEntityMeta().getTableName())
-                        .add("\n.usingGeneratedKeyColumns($L)", generatedKeysLiteral)
-                        .add("\n.executeAndReturnKeyHolder($N)", PARAM_SOURCE)
-                        .add("\n.getKeys()")
-                        .build())
+                .addStatement("final var keyHolder = new $T()", GeneratedKeyHolder.class)
+                .addStatement("this.$N.update($S, $N, $L)", TEMPLATE_NAME, query, PARAM_SOURCE, "keyHolder")
+                .addStatement("final var keys = keyHolder.getKeys()", GeneratedKeyHolder.class)
                 .addCode(generateUtil.createEntityOnInsert(executableElement, "keys", implData));
         TypeVariableName typeVariableName = builder.typeVariables.get(0);
         builder.typeVariables.set(0, TypeVariableName.get(typeVariableName.name, TypeName.get(implData.getEntityType())));
@@ -309,9 +308,9 @@ public class GenerateDaoProcessor extends AbstractProcessor {
         CodeBlock paramSource = generateUtil.createParamSourceFromEntity(executableElement, PARAM_SOURCE, implData, paramSourceMethod);
         String query = String.format("UPDATE %s SET %s WHERE %s",
                 implData.getEntityMeta().getTableName(),
-                generateUtil.createCondition(implData.getEntityMeta().getFields()
-                        .stream().filter(f -> !f.isGenerated() && !f.isKey()).collect(Collectors.toList())),
-                generateUtil.createCondition(implData.getEntityMeta().getKeyFields()));
+                generateUtil.createStatement(implData.getEntityMeta().getFields()
+                        .stream().filter(f -> !f.isGenerated() && !f.isKey()).collect(Collectors.toList()), ", "),
+                generateUtil.createIdCondition(implData));
         return methodBuilder(executableElement, implData)
                 .addStatement(paramSource)
                 .addStatement("this.$N.update($S, $N)", TEMPLATE_NAME, query, PARAM_SOURCE)
