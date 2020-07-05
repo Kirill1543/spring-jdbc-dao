@@ -29,6 +29,8 @@ import javax.persistence.GeneratedValue;
 import javax.persistence.Id;
 import javax.tools.Diagnostic;
 import java.io.IOException;
+import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -220,10 +222,42 @@ public final class GenerateUtil {
                 .findAny();
     }
 
+    public boolean isEnum(@Nonnull final TypeMirror typeMirror) {
+        return ((DeclaredType) typeMirror).asElement().getKind() == ElementKind.ENUM;
+    }
+
     public boolean hasType(@Nonnull final TypeMirror typeMirror, @Nonnull Class<?> typeClass) {
         return processingEnv.getTypeUtils().isSameType(
                 typeMirror,
                 processingEnv.getElementUtils().getTypeElement(typeClass.getName()).asType());
+    }
+
+    @Nonnull
+    public Optional<String> getResultSetGetter(@Nonnull final FieldMeta fieldMeta) {
+        TypeMirror type = fieldMeta.getType();
+        if (hasType(type, Long.class) || type.getKind() == TypeKind.LONG) {
+            return Optional.of("$L.getLong($S)");
+        } else if (hasType(type, Integer.class) || type.getKind() == TypeKind.INT) {
+            return Optional.of("$L.getInt($S)");
+        } else if (hasType(type, Short.class) || type.getKind() == TypeKind.SHORT) {
+            return Optional.of("$L.getShort($S)");
+        } else if (hasType(type, Byte.class) || type.getKind() == TypeKind.BYTE) {
+            return Optional.of("$L.getByte($S)");
+        } else if (hasType(type, Double.class) || type.getKind() == TypeKind.DOUBLE) {
+            return Optional.of("$L.getDouble($S)");
+        } else if (hasType(type, Float.class) || type.getKind() == TypeKind.FLOAT) {
+            return Optional.of("$L.getFloat($S)");
+        } else if (hasType(type, BigDecimal.class)) {
+            return Optional.of("$L.getBigDecimal($S)");
+        } else if (hasType(type, String.class)) {
+            return Optional.of("$L.getString($S)");
+        } else if (hasType(type, LocalDate.class)) {
+            return Optional.of("$L.getDate($S).toLocalDate()");
+        } else if (hasType(type, LocalDateTime.class)) {
+            return Optional.of("$L.getTimestamp($S).toLocalDateTime()");
+        } else {
+            return Optional.empty();
+        }
     }
 
     @Nonnull

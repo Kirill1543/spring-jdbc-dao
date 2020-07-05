@@ -1,6 +1,7 @@
 package com.kappadrive.dao.test;
 
 import com.kappadrive.dao.test.model.User;
+import com.kappadrive.dao.test.model.UserRole;
 import com.kappadrive.dao.test.repository.UserDao;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
@@ -35,17 +36,20 @@ class UserDaoTest {
                 .isPresent()
                 .hasValueSatisfying(v -> assertAll(
                         () -> assertThat(v.getName()).isEqualTo("User"),
-                        () -> assertThat(v.getOtherName()).isEqualTo("Kyle")
+                        () -> assertThat(v.getOtherName()).isEqualTo("Kyle"),
+                        () -> assertThat(v.getRole()).isNull()
                 ));
 
         user.setName("User2");
+        user.setRole(UserRole.ADMIN);
         User inserted2 = userDao.insert(user);
         assertThat(inserted2.getId()).isEqualTo(2);
         assertThat(userDao.findById(2L))
                 .isPresent()
                 .hasValueSatisfying(v -> assertAll(
                         () -> assertThat(v.getName()).isEqualTo("User2"),
-                        () -> assertThat(v.getOtherName()).isEqualTo("Kyle")
+                        () -> assertThat(v.getOtherName()).isEqualTo("Kyle"),
+                        () -> assertThat(v.getRole()).isEqualTo(UserRole.ADMIN)
                 ));
     }
 }
