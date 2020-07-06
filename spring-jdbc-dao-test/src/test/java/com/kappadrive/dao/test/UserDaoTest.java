@@ -103,4 +103,32 @@ class UserDaoTest {
         userDao.delete(1L);
         assertThat(userDao.findAll()).isEmpty();
     }
+
+    @Test
+    void testCustomFind() {
+        User user = new User();
+        user.setName("Kyle");
+        user.setOtherName("Jersey");
+        user.setRole(UserRole.USER);
+        userDao.insert(user);
+
+        assertThat(userDao.findByName("Kyl")).isEmpty();
+        assertThat(userDao.findByName("Kyle"))
+                .hasSize(1)
+                .contains(user);
+
+        User user2 = new User();
+        user2.setName("Kyle");
+        user2.setOtherName("B");
+        user2.setRole(UserRole.ADMIN);
+        userDao.insert(user2);
+
+        assertThat(userDao.findByName("Kyle"))
+                .hasSize(2)
+                .contains(user, user2);
+
+        assertThat(userDao.findByNameAndRole("Kyle", UserRole.ADMIN))
+                .hasSize(1)
+                .contains(user2);
+    }
 }

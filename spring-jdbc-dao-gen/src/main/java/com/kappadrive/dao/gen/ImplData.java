@@ -16,7 +16,6 @@ public class ImplData {
     private final TypeElement interfaceElement;
     private final DeclaredType interfaceType;
     private final DeclaredType entityType;
-    private final DeclaredType idType;
     private final EntityMeta entityMeta;
     private final Collection<ExecutableElement> daoMethods;
 }

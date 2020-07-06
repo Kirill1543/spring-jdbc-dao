@@ -46,7 +46,6 @@ import javax.tools.Diagnostic;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -138,7 +137,6 @@ public class GenerateDaoProcessor extends AbstractProcessor {
                         .interfaceElement(e)
                         .interfaceType((DeclaredType) e.asType())
                         .entityType(entityType)
-                        .idType(generateUtil.resolveVarType(typeArguments.get(1), daoHierarchy, 0))
                         .entityMeta(createEntityMeta(entityType))
                         .daoMethods(allMethods)
                         .build();
@@ -167,30 +165,21 @@ public class GenerateDaoProcessor extends AbstractProcessor {
     @Nullable
     public MethodSpec createDaoMethod(@Nonnull ExecutableElement executableElement, @Nonnull ImplData implData,
                                       @Nonnull FieldSpec rowMapper, @Nonnull MethodSpec paramSourceMethod) {
-        switch (executableElement.getSimpleName().toString()) {
-            case "findAll":
-                return createFindAllMethod(executableElement, implData, rowMapper);
-            case "findById":
-                return createFindByIdMethod(executableElement, implData, rowMapper);
-            case "insert":
-                return createInsertMethod(executableElement, implData, paramSourceMethod);
-            case "insertAll":
-                return createInsertAllMethod(executableElement, implData);
-            case "update":
-                return createUpdateMethod(executableElement, implData, paramSourceMethod);
-            case "updateAll":
-                return createUpdateAllMethod(executableElement, implData);
-            case "delete":
-                return createDeleteMethod(executableElement, implData);
-            case "deleteAllById":
-                return createDeleteAllByIdMethod(executableElement, implData);
-            case "deleteAll":
-                return createDeleteAll(executableElement, implData);
-            case "exists":
-                return createExists(executableElement, implData);
-            default:
-                return null;
+        String s = executableElement.getSimpleName().toString();
+        if (s.startsWith("find")) {
+            return createFindMethod(executableElement, implData, rowMapper);
+        } else if ("insert".equals(s)) {
+            return createInsertMethod(executableElement, implData, paramSourceMethod);
+        } else if ("insertAll".equals(s)) {
+            return createInsertAllMethod(executableElement, implData);
+        } else if ("update".equals(s)) {
+            return createUpdateMethod(executableElement, implData, paramSourceMethod);
+        } else if ("updateAll".equals(s)) {
+            return createUpdateAllMethod(executableElement, implData);
+        } else if (s.startsWith("delete")) {
+            return createDeleteMethod(executableElement, implData);
         }
+        throw new IllegalArgumentException("Unsupported method: " + executableElement);
     }
 
     @Nonnull
@@ -228,10 +217,10 @@ public class GenerateDaoProcessor extends AbstractProcessor {
                                     f.getSetter().getSimpleName(), "rs", f.getColumnName()),
                     () -> {
                         if (generateUtil.isEnum(f.getType())) {
-                            builder.addStatement("entity.$L(Optional.ofNullable($L.getString($S)).map($T::valueOf).orElse(null))",
-                                    f.getSetter().getSimpleName(), "rs", f.getColumnName(), f.getType());
+                            builder.addStatement("entity.$L($T.ofNullable($L.getString($S)).map($T::valueOf).orElse(null))",
+                                    f.getSetter().getSimpleName(), Optional.class, "rs", f.getColumnName(), f.getType());
                         } else {
-                            throw new IllegalArgumentException();
+                            throw new IllegalArgumentException("Unsupported entity field type: " + f.getType());
                         }
                     });
         });
@@ -243,27 +232,27 @@ public class GenerateDaoProcessor extends AbstractProcessor {
     }
 
     @Nonnull
-    private MethodSpec createFindAllMethod(@Nonnull ExecutableElement executableElement, @Nonnull ImplData implData,
-                                           @Nonnull FieldSpec rowMapper) {
-        String query = String.format("SELECT * FROM %s",
-                implData.getEntityMeta().getTableName());
-        return methodBuilder(executableElement, implData)
-                .addStatement("return this.$N.query($S, this.$N)",
-                        TEMPLATE_NAME, query, rowMapper)
-                .build();
-    }
-
-    @Nonnull
-    private MethodSpec createFindByIdMethod(@Nonnull ExecutableElement executableElement, @Nonnull ImplData implData, @Nonnull FieldSpec rowMapper) {
-        String query = String.format("SELECT * FROM %s WHERE %s",
+    private MethodSpec createFindMethod(@Nonnull ExecutableElement executableElement, @Nonnull ImplData implData, @Nonnull FieldSpec rowMapper) {
+        final String query = String.format("SELECT * FROM %s%s",
                 implData.getEntityMeta().getTableName(),
-                generateUtil.createIdCondition(implData));
-        return methodBuilder(executableElement, implData)
-                .addStatement(generateUtil.createParamSourceFromId(executableElement, PARAM_SOURCE, implData, FieldMeta::isKey))
-                .addStatement("return $T.ofNullable($T.singleResult(this.$N.query($S, $N, this.$N)))",
-                        TypeName.get(Optional.class), TypeName.get(DataAccessUtils.class),
-                        TEMPLATE_NAME, query, PARAM_SOURCE, rowMapper)
-                .build();
+                generateUtil.createCondition(executableElement, implData));
+        MethodSpec.Builder builder = methodBuilder(executableElement, implData)
+                .addStatement(generateUtil.createParamSourceFromParameters(executableElement, PARAM_SOURCE, implData));
+        TypeMirror returnType = executableElement.getReturnType();
+        if (generateUtil.isAssignableGeneric(returnType, List.class)
+                || generateUtil.isAssignableGeneric(returnType, Collection.class)
+                || generateUtil.isAssignableGeneric(returnType, Iterable.class)) {
+            builder.addStatement("return this.$N.query($S, $N, this.$N)",
+                    TEMPLATE_NAME, query, PARAM_SOURCE, rowMapper);
+        } else {
+            if (!generateUtil.isAssignableGeneric(returnType, Optional.class)) {
+                throw new IllegalArgumentException("find* method return should be Optional or List/Collection/Iterable");
+            }
+            builder.addStatement("return $T.ofNullable($T.singleResult(this.$N.query($S, $N, this.$N)))",
+                    Optional.class, DataAccessUtils.class,
+                    TEMPLATE_NAME, query, PARAM_SOURCE, rowMapper);
+        }
+        return builder.build();
     }
 
     @Nonnull
@@ -306,11 +295,11 @@ public class GenerateDaoProcessor extends AbstractProcessor {
     private MethodSpec createUpdateMethod(@Nonnull ExecutableElement executableElement, @Nonnull ImplData implData,
                                           @Nonnull MethodSpec paramSourceMethod) {
         CodeBlock paramSource = generateUtil.createParamSourceFromEntity(executableElement, PARAM_SOURCE, implData, paramSourceMethod);
-        String query = String.format("UPDATE %s SET %s WHERE %s",
+        String query = String.format("UPDATE %s SET %s%s",
                 implData.getEntityMeta().getTableName(),
                 generateUtil.createStatement(implData.getEntityMeta().getFields()
                         .stream().filter(f -> !f.isGenerated() && !f.isKey()).collect(Collectors.toList()), ", "),
-                generateUtil.createIdCondition(implData));
+                generateUtil.createCondition(implData.getEntityMeta().getKeyFields()));
         return methodBuilder(executableElement, implData)
                 .addStatement(paramSource)
                 .addStatement("this.$N.update($S, $N)", TEMPLATE_NAME, query, PARAM_SOURCE)
@@ -326,35 +315,13 @@ public class GenerateDaoProcessor extends AbstractProcessor {
 
     @Nonnull
     private MethodSpec createDeleteMethod(@Nonnull ExecutableElement executableElement, @Nonnull ImplData implData) {
-        CodeBlock paramSource = generateUtil.createParamSourceFromId(executableElement, PARAM_SOURCE, implData, FieldMeta::isKey);
-        String query = String.format("DELETE FROM %s WHERE %s",
+        CodeBlock paramSource = generateUtil.createParamSourceFromParameters(executableElement, PARAM_SOURCE, implData);
+        String query = String.format("DELETE FROM %s%s",
                 implData.getEntityMeta().getTableName(),
-                generateUtil.createIdCondition(implData));
+                generateUtil.createCondition(executableElement, implData));
         return methodBuilder(executableElement, implData)
                 .addStatement(paramSource)
                 .addStatement("this.$N.update($S, $N)", TEMPLATE_NAME, query, PARAM_SOURCE)
-                .build();
-    }
-
-    @Nonnull
-    private MethodSpec createDeleteAllByIdMethod(@Nonnull ExecutableElement executableElement, @Nonnull ImplData implData) {
-        return methodBuilder(executableElement, implData)
-                .addStatement("$L.forEach(this::delete)", executableElement.getParameters().get(0))
-                .build();
-    }
-
-    @Nonnull
-    private MethodSpec createDeleteAll(@Nonnull ExecutableElement executableElement, @Nonnull ImplData implData) {
-        return methodBuilder(executableElement, implData)
-                .addStatement("this.$N.update($S, $T.emptyMap())",
-                        TEMPLATE_NAME, "DELETE FROM " + implData.getEntityMeta().getTableName(), Collections.class)
-                .build();
-    }
-
-    @Nonnull
-    private MethodSpec createExists(@Nonnull ExecutableElement executableElement, @Nonnull ImplData implData) {
-        return methodBuilder(executableElement, implData)
-                .addStatement("return findById($L).isPresent()", executableElement.getParameters().get(0))
                 .build();
     }
 

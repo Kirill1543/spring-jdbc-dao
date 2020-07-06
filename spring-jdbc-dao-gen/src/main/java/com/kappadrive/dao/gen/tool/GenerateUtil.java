@@ -8,6 +8,7 @@ import com.squareup.javapoet.AnnotationSpec;
 import com.squareup.javapoet.CodeBlock;
 import com.squareup.javapoet.JavaFile;
 import com.squareup.javapoet.MethodSpec;
+import org.springframework.jdbc.core.namedparam.EmptySqlParameterSource;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.util.StringUtils;
 
@@ -41,14 +42,15 @@ import java.util.List;
 import java.util.Optional;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 public final class GenerateUtil {
 
     private final ProcessingEnvironment processingEnv;
+    private final TypeElement objectType;
 
     public GenerateUtil(ProcessingEnvironment processingEnv) {
         this.processingEnv = processingEnv;
+        objectType = processingEnv.getElementUtils().getTypeElement(Object.class.getName());
     }
 
     @Nonnull
@@ -129,17 +131,12 @@ public final class GenerateUtil {
 
     @Nonnull
     public Collection<ExecutableElement> getAllAbstractMethods(@Nonnull final TypeElement typeElement) {
-        return typeElement.getInterfaces().stream().flatMap(i -> i.accept(new TypeKindVisitor9<Stream<ExecutableElement>, Object>() {
-            @Override
-            public Stream<ExecutableElement> visitDeclared(DeclaredType t, Object o) {
-                TypeElement element = (TypeElement) t.asElement();
-                return Stream.concat(element.getEnclosedElements()
-                                .stream().filter(e -> e.getKind() == ElementKind.METHOD)
-                                .map(e -> (ExecutableElement) e)
-                                .filter(e -> !e.isDefault()),
-                        getAllAbstractMethods(element).stream());
-            }
-        }, null))
+        return processingEnv.getElementUtils().getAllMembers(typeElement)
+                .stream()
+                .filter(e -> !objectType.equals(e.getEnclosingElement()))
+                .filter(e -> e.getKind() == ElementKind.METHOD)
+                .map(e -> (ExecutableElement) e)
+                .filter(e -> !e.isDefault())
                 .collect(Collectors.toList());
     }
 
@@ -214,12 +211,13 @@ public final class GenerateUtil {
     }
 
     @Nonnull
-    public Optional<FieldMeta> findFieldByName(
+    public Optional<FieldMeta> findFieldByParameter(
             @Nonnull final ImplData implData,
-            @Nonnull final String fieldName
+            @Nonnull final VariableElement variableElement
     ) {
+        String varName = variableElement.getSimpleName().toString();
         return implData.getEntityMeta().getFields().stream()
-                .filter(f -> f.getField().getSimpleName().contentEquals(fieldName))
+                .filter(f -> f.getField().getSimpleName().contentEquals(varName))
                 .findAny();
     }
 
@@ -227,9 +225,27 @@ public final class GenerateUtil {
         return ((DeclaredType) typeMirror).asElement().getKind() == ElementKind.ENUM;
     }
 
-    public boolean hasType(@Nonnull final TypeMirror typeMirror, @Nonnull Class<?> typeClass) {
+    public boolean hasType(@Nonnull final TypeMirror typeMirror, @Nonnull final Class<?> typeClass) {
         return processingEnv.getTypeUtils().isSameType(
                 typeMirror,
+                processingEnv.getElementUtils().getTypeElement(typeClass.getName()).asType());
+    }
+
+    public boolean isSubType(@Nonnull final TypeMirror typeMirror, @Nonnull final Class<?> typeClass) {
+        return processingEnv.getTypeUtils().isSubtype(
+                typeMirror,
+                processingEnv.getElementUtils().getTypeElement(typeClass.getName()).asType());
+    }
+
+    public boolean isAssignable(@Nonnull final TypeMirror typeMirror, @Nonnull final Class<?> typeClass) {
+        return processingEnv.getTypeUtils().isAssignable(
+                typeMirror,
+                processingEnv.getElementUtils().getTypeElement(typeClass.getName()).asType());
+    }
+
+    public boolean isAssignableGeneric(@Nonnull final TypeMirror typeMirror, @Nonnull final Class<?> typeClass) {
+        return processingEnv.getTypeUtils().isAssignable(
+                processingEnv.getTypeUtils().erasure(typeMirror),
                 processingEnv.getElementUtils().getTypeElement(typeClass.getName()).asType());
     }
 
@@ -281,6 +297,22 @@ public final class GenerateUtil {
     }
 
     @Nonnull
+    public String createCondition(@Nonnull final ExecutableElement executableElement, @Nonnull final ImplData implData) {
+        List<? extends VariableElement> parameters = executableElement.getParameters();
+        if (parameters.isEmpty()) {
+            return "";
+        }
+        return parameters.stream()
+                .map(v -> {
+                    String varName = v.getSimpleName().toString();
+                    FieldMeta f = findFieldByParameter(implData, v)
+                            .orElseThrow(() -> new IllegalArgumentException("No field found for parameter " + varName));
+                    return String.format("%s = :%s", f.getColumnName(), varName);
+                })
+                .collect(Collectors.joining(" AND ", " WHERE ", ""));
+    }
+
+    @Nonnull
     public String createStatement(@Nonnull final Collection<FieldMeta> fields, @Nonnull final String delimiter) {
         return fields.stream()
                 .map(f -> String.format("%s = :%s", f.getColumnName(), f.getName()))
@@ -288,8 +320,13 @@ public final class GenerateUtil {
     }
 
     @Nonnull
-    public String createIdCondition(@Nonnull final ImplData implData) {
-        return createStatement(implData.getEntityMeta().getKeyFields(), " AND ");
+    public String createCondition(@Nonnull final Collection<FieldMeta> fields) {
+        if (fields.isEmpty()) {
+            return "";
+        }
+        return fields.stream()
+                .map(f -> String.format("%s = :%s", f.getColumnName(), f.getName()))
+                .collect(Collectors.joining(" AND ", " WHERE ", ""));
     }
 
     @Nonnull
@@ -314,39 +351,26 @@ public final class GenerateUtil {
     }
 
     @Nonnull
-    public CodeBlock createParamSourceFromSimpleType(
-            @Nonnull final ExecutableElement executableElement,
-            @Nonnull final String paramSource,
-            @Nonnull final ImplData implData,
-            @Nonnull final Predicate<? super FieldMeta> filter
-    ) {
-        CodeBlock.Builder builder = CodeBlock.builder()
-                .add("final var $N = new $T()", paramSource, MapSqlParameterSource.class);
-        VariableElement param = executableElement.getParameters().get(0);
-        implData.getEntityMeta().getFields().stream()
-                .filter(filter)
-                .forEach(f -> {
-                    String paramName = f.getColumnName();
-                    builder.add("\n.addValue($S, $L)", paramName, param);
-                });
-        return builder.build();
-    }
-
-    @Nonnull
     public CodeBlock createParamSourceFromParameters(
             @Nonnull final ExecutableElement executableElement,
             @Nonnull final String paramSource,
             @Nonnull final ImplData implData
     ) {
+        List<? extends VariableElement> parameters = executableElement.getParameters();
+        if (parameters.isEmpty()) {
+            return CodeBlock.of("final var $N = $T.INSTANCE", paramSource, EmptySqlParameterSource.class);
+        }
         CodeBlock.Builder builder = CodeBlock.builder()
                 .add("final var $N = new $T()", paramSource, MapSqlParameterSource.class);
-        executableElement.getParameters().forEach(v -> {
+        parameters.forEach(v -> {
             String varName = v.getSimpleName().toString();
-            FieldMeta f = findFieldByName(implData, varName)
-                    .orElseThrow(() -> new IllegalArgumentException("No field found with name " + varName));
-            String paramName = f.getColumnName();
-            String paramValue = v.getSimpleName().toString();
-            builder.add("\n.addValue($S, $L)", paramName, paramValue);
+            FieldMeta f = findFieldByParameter(implData, v)
+                    .orElseThrow(() -> new IllegalArgumentException("No field found for parameter " + varName));
+            if (f.getSqlType() == null) {
+                builder.add("\n.addValue($S, $L)", varName, varName);
+            } else {
+                builder.add("\n.addValue($S, $L, $L)", varName, varName, f.getSqlType());
+            }
         });
         return builder.build();
     }
@@ -360,20 +384,6 @@ public final class GenerateUtil {
     ) {
         if (hasSingleParameter(executableElement, implData, implData.getEntityType())) {
             return CodeBlock.of("final var $N = $N($L)", paramSource, paramSourceMethod, executableElement.getParameters().get(0));
-        } else {
-            return createParamSourceFromParameters(executableElement, paramSource, implData);
-        }
-    }
-
-    @Nonnull
-    public CodeBlock createParamSourceFromId(
-            @Nonnull final ExecutableElement executableElement,
-            @Nonnull final String paramSource,
-            @Nonnull final ImplData implData,
-            @Nonnull final Predicate<? super FieldMeta> filter
-    ) {
-        if (hasSingleParameter(executableElement, implData, implData.getIdType())) {
-            return createParamSourceFromSimpleType(executableElement, paramSource, implData, filter);
         } else {
             return createParamSourceFromParameters(executableElement, paramSource, implData);
         }
@@ -408,8 +418,8 @@ public final class GenerateUtil {
             builder.addStatement("final var $L = new $T()", entityVar, implData.getEntityType());
             parameters.forEach(v -> {
                 String varName = v.getSimpleName().toString();
-                FieldMeta f = findFieldByName(implData, varName)
-                        .orElseThrow(() -> new IllegalArgumentException("No field found with name " + varName));
+                FieldMeta f = findFieldByParameter(implData, v)
+                        .orElseThrow(() -> new IllegalArgumentException("No field found for parameter " + varName));
                 builder.add("$L.$L($L)", entityVar, f.getSetter().getSimpleName(), v.getSimpleName());
             });
         }
