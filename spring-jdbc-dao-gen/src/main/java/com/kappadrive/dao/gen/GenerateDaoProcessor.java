@@ -52,7 +52,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
-import java.util.stream.StreamSupport;
 
 @SupportedAnnotationTypes("com.kappadrive.dao.api.GenerateDao")
 @SupportedSourceVersion(SourceVersion.RELEASE_11)
@@ -269,8 +268,10 @@ public class GenerateDaoProcessor extends AbstractProcessor {
                 .addStatement("this.$N.update($S, $N, $L)", TEMPLATE_NAME, query, PARAM_SOURCE, "keyHolder")
                 .addStatement("final var keys = keyHolder.getKeys()", GeneratedKeyHolder.class)
                 .addCode(generateUtil.createEntityOnInsert(executableElement, "keys", implData));
-        TypeVariableName typeVariableName = builder.typeVariables.get(0);
-        builder.typeVariables.set(0, TypeVariableName.get(typeVariableName.name, TypeName.get(implData.getEntityType())));
+        if (!builder.typeVariables.isEmpty()) {
+            TypeVariableName typeVariableName = builder.typeVariables.get(0);
+            builder.typeVariables.set(0, TypeVariableName.get(typeVariableName.name, TypeName.get(implData.getEntityType())));
+        }
         return builder.build();
     }
 

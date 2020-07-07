@@ -408,10 +408,7 @@ public final class GenerateUtil {
         CodeBlock.Builder builder = CodeBlock.builder();
         List<? extends VariableElement> parameters = executableElement.getParameters();
         String entityVar;
-        if (parameters.size() == 1
-                && processingEnv.getTypeUtils().isSubtype(
-                resolveGenericTypes(executableElement, implData.getInterfaceType()).get(0),
-                implData.getEntityType())) {
+        if (hasSingleParameter(executableElement, implData, implData.getEntityType())) {
             entityVar = parameters.get(0).getSimpleName().toString();
         } else {
             entityVar = "entity";
