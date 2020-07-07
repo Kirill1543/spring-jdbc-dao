@@ -200,7 +200,7 @@ public final class GenerateUtil {
                 .type(field.asType())
                 .getter(getter)
                 .setter(setter)
-                .sqlType(AnnotationUtil.getAnnotationValue(field, Column.class, "value", Integer.class)
+                .sqlType(AnnotationUtil.getAnnotationValue(field, Column.class, "type", Integer.class)
                         .filter(v -> v != Integer.MIN_VALUE)
                         .orElse(null))
                 .isKey(AnnotationUtil.getAnnotationMirror(field, Id.class).isPresent())
