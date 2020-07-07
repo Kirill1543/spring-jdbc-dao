@@ -2,6 +2,8 @@ package com.kappadrive.dao.gen;
 
 import com.google.auto.service.AutoService;
 import com.kappadrive.dao.api.GenerateDao;
+import com.kappadrive.dao.api.Id;
+import com.kappadrive.dao.api.Table;
 import com.kappadrive.dao.gen.tool.AnnotationUtil;
 import com.kappadrive.dao.gen.tool.GenerateUtil;
 import com.squareup.javapoet.ClassName;
@@ -39,8 +41,6 @@ import javax.lang.model.type.DeclaredType;
 import javax.lang.model.type.TypeMirror;
 import javax.lang.model.util.ElementKindVisitor9;
 import javax.lang.model.util.Types;
-import javax.persistence.Id;
-import javax.persistence.Table;
 import javax.tools.Diagnostic;
 import java.sql.ResultSet;
 import java.sql.SQLException;

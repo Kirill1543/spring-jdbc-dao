@@ -5,6 +5,7 @@ plugins {
 }
 
 dependencies {
+    implementation 'com.google.code.findbugs:jsr305:3.0.2'
     implementation project(':spring-jdbc-dao-api')
     compileOnly 'org.projectlombok:lombok:1.18.12'
     annotationProcessor 'org.projectlombok:lombok:1.18.12'
@@ -14,4 +15,8 @@ dependencies {
     implementation 'com.h2database:h2:1.4.200'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}
+
+compileJava {
+    options.compilerArgs << '-parameters'
 }

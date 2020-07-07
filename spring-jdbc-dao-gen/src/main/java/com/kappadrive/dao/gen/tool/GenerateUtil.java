@@ -1,6 +1,8 @@
 package com.kappadrive.dao.gen.tool;
 
-import com.kappadrive.dao.api.ColumnType;
+import com.kappadrive.dao.api.Column;
+import com.kappadrive.dao.api.GeneratedValue;
+import com.kappadrive.dao.api.Id;
 import com.kappadrive.dao.gen.FieldMeta;
 import com.kappadrive.dao.gen.GenerateDaoProcessor;
 import com.kappadrive.dao.gen.ImplData;
@@ -26,9 +28,6 @@ import javax.lang.model.type.TypeMirror;
 import javax.lang.model.type.TypeVariable;
 import javax.lang.model.util.ElementKindVisitor9;
 import javax.lang.model.util.TypeKindVisitor9;
-import javax.persistence.Column;
-import javax.persistence.GeneratedValue;
-import javax.persistence.Id;
 import javax.tools.Diagnostic;
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -201,11 +200,13 @@ public final class GenerateUtil {
                 .type(field.asType())
                 .getter(getter)
                 .setter(setter)
-                .sqlType(AnnotationUtil.getAnnotationValue(field, ColumnType.class, "value", Integer.class)
+                .sqlType(AnnotationUtil.getAnnotationValue(field, Column.class, "value", Integer.class)
+                        .filter(v -> v != Integer.MIN_VALUE)
                         .orElse(null))
                 .isKey(AnnotationUtil.getAnnotationMirror(field, Id.class).isPresent())
                 .isGenerated(AnnotationUtil.getAnnotationMirror(field, GeneratedValue.class).isPresent())
                 .columnName(AnnotationUtil.getAnnotationValue(field, Column.class, "name", String.class)
+                        .filter(v -> !v.isEmpty())
                         .orElseGet(() -> DbNameUtil.convertToDbName(name)))
                 .build();
     }

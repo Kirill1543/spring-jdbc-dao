@@ -1,12 +1,11 @@
 package com.kappadrive.dao.test.model;
 
-import com.kappadrive.dao.api.ColumnType;
+import com.kappadrive.dao.api.Column;
+import com.kappadrive.dao.api.GeneratedValue;
+import com.kappadrive.dao.api.Id;
+import com.kappadrive.dao.api.Table;
 import lombok.Data;
 
-import javax.persistence.Column;
-import javax.persistence.GeneratedValue;
-import javax.persistence.Id;
-import javax.persistence.Table;
 import java.sql.Types;
 
 @Data
@@ -19,6 +18,6 @@ public class User {
     private String name;
     @Column(name = "family_name")
     private String otherName;
-    @ColumnType(Types.VARCHAR)
+    @Column(type = Types.VARCHAR)
     private UserRole role;
 }
