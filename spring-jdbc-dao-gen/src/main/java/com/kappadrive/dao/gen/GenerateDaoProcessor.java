@@ -168,14 +168,10 @@ public class GenerateDaoProcessor extends AbstractProcessor {
         String s = executableElement.getSimpleName().toString();
         if (s.startsWith("find")) {
             return createFindMethod(executableElement, implData, rowMapper);
-        } else if ("insert".equals(s)) {
+        } else if (s.startsWith("insert")) {
             return createInsertMethod(executableElement, implData, paramSourceMethod);
-        } else if ("insertAll".equals(s)) {
-            return createInsertAllMethod(executableElement, implData);
-        } else if ("update".equals(s)) {
+        } else if (s.startsWith("update")) {
             return createUpdateMethod(executableElement, implData, paramSourceMethod);
-        } else if ("updateAll".equals(s)) {
-            return createUpdateAllMethod(executableElement, implData);
         } else if (s.startsWith("delete")) {
             return createDeleteMethod(executableElement, implData);
         }
@@ -279,19 +275,6 @@ public class GenerateDaoProcessor extends AbstractProcessor {
     }
 
     @Nonnull
-    private MethodSpec createInsertAllMethod(@Nonnull ExecutableElement executableElement, @Nonnull ImplData implData) {
-        MethodSpec.Builder builder = methodBuilder(executableElement, implData)
-                .addStatement(CodeBlock.builder()
-                        .add("return $T.stream($L.spliterator(), false)\n", StreamSupport.class, executableElement.getParameters().get(0))
-                        .add(".map(this::insert)\n")
-                        .add(".collect($T.toList())", Collectors.class)
-                        .build());
-        TypeVariableName typeVariableName = builder.typeVariables.get(0);
-        builder.typeVariables.set(0, TypeVariableName.get(typeVariableName.name, TypeName.get(implData.getEntityType())));
-        return builder.build();
-    }
-
-    @Nonnull
     private MethodSpec createUpdateMethod(@Nonnull ExecutableElement executableElement, @Nonnull ImplData implData,
                                           @Nonnull MethodSpec paramSourceMethod) {
         CodeBlock paramSource = generateUtil.createParamSourceFromEntity(executableElement, PARAM_SOURCE, implData, paramSourceMethod);
@@ -303,13 +286,6 @@ public class GenerateDaoProcessor extends AbstractProcessor {
         return methodBuilder(executableElement, implData)
                 .addStatement(paramSource)
                 .addStatement("this.$N.update($S, $N)", TEMPLATE_NAME, query, PARAM_SOURCE)
-                .build();
-    }
-
-    @Nonnull
-    private MethodSpec createUpdateAllMethod(@Nonnull ExecutableElement executableElement, @Nonnull ImplData implData) {
-        return methodBuilder(executableElement, implData)
-                .addStatement("$L.forEach(this::update)", executableElement.getParameters().get(0))
                 .build();
     }
 
