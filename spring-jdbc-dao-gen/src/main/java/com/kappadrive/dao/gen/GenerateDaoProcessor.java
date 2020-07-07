@@ -2,7 +2,6 @@ package com.kappadrive.dao.gen;
 
 import com.google.auto.service.AutoService;
 import com.kappadrive.dao.api.GenerateDao;
-import com.kappadrive.dao.api.JdbcDao;
 import com.kappadrive.dao.gen.tool.AnnotationUtil;
 import com.kappadrive.dao.gen.tool.GenerateUtil;
 import com.squareup.javapoet.ClassName;
@@ -122,15 +121,10 @@ public class GenerateDaoProcessor extends AbstractProcessor {
         return new ElementKindVisitor9<ImplData, Object>() {
             @Override
             public ImplData visitType(TypeElement e, Object o) {
-                List<DeclaredType> daoHierarchy = generateUtil.getInterfaceHierarchy(e, JdbcDao.class);
-                if (daoHierarchy.isEmpty()) {
-                    processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR, String.format("@%s must implement %s", GenerateDao.class.getName(), JdbcDao.class.getName()), e);
-                    return null;
-                }
                 PackageElement packageElement = (PackageElement) e.getEnclosingElement();
-                List<? extends TypeMirror> typeArguments = daoHierarchy.get(0).getTypeArguments();
                 Collection<ExecutableElement> allMethods = generateUtil.getAllAbstractMethods(e);
-                DeclaredType entityType = generateUtil.resolveVarType(typeArguments.get(0), daoHierarchy, 0);
+                DeclaredType entityType = AnnotationUtil.getAnnotationValue(e, GenerateDao.class, "value", DeclaredType.class)
+                        .orElseThrow(IllegalStateException::new);
                 return ImplData.builder()
                         .packageName(packageElement.getQualifiedName().toString())
                         .interfaceElement(e)

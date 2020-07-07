@@ -443,4 +443,9 @@ public final class GenerateUtil {
         ExecutableType executableType = (ExecutableType) processingEnv.getTypeUtils().asMemberOf(type, executableElement);
         return executableType.getParameterTypes();
     }
+
+    @Nonnull
+    public DeclaredType getDeclaredType(@Nonnull final Class<?> type) {
+        return processingEnv.getTypeUtils().getDeclaredType(processingEnv.getElementUtils().getTypeElement(type.getName()));
+    }
 }
