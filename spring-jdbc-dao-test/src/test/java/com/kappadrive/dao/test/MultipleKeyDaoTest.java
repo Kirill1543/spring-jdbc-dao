@@ -1,5 +1,6 @@
 package com.kappadrive.dao.test;
 
+import com.kappadrive.dao.test.model.MultipleKey;
 import com.kappadrive.dao.test.repository.MultipleKeyDao;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -18,7 +19,13 @@ class MultipleKeyDaoTest {
 
     @Test
     void test() {
-        multipleKeyDao.insert(1L, 2L);
+        MultipleKey multipleKey = multipleKeyDao.insert(1L, 2L);
+        assertThat(multipleKey)
+                .satisfies(m -> assertAll(
+                        () -> assertThat(m.getId()).isEqualTo(1),
+                        () -> assertThat(m.getOtherId()).isEqualTo(2),
+                        () -> assertThat(m.getSequence()).isEqualTo(1)
+                ));
         multipleKeyDao.insert(2L, 2L);
         multipleKeyDao.insert(2L, 1L);
 
