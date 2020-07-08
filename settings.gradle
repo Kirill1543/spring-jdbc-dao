@@ -1,1 +1,4 @@
 rootProject.name = 'spring-jdbc-dao'
+include 'spring-jdbc-dao-api'
+include 'spring-jdbc-dao-gen'
+include 'spring-jdbc-dao-test'

@@ -1,0 +1,18 @@
+plugins {
+    id 'java'
+    id 'java-library'
+}
+
+dependencies {
+    api project(':spring-jdbc-dao-api')
+    implementation 'com.google.code.findbugs:jsr305:3.0.2'
+    compileOnly 'com.google.auto.service:auto-service:1.0-rc7'
+    annotationProcessor 'com.google.auto.service:auto-service:1.0-rc7'
+
+    compileOnly 'org.projectlombok:lombok:1.18.12'
+    annotationProcessor 'org.projectlombok:lombok:1.18.12'
+
+    implementation 'com.squareup:javapoet:1.13.0'
+    implementation 'org.springframework:spring-jdbc:5.2.7.RELEASE'
+    implementation 'org.springframework:spring-context:5.2.7.RELEASE'
+}
