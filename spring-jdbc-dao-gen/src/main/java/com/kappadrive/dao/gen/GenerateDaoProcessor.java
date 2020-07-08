@@ -2,7 +2,7 @@ package com.kappadrive.dao.gen;
 
 import com.google.auto.service.AutoService;
 import com.kappadrive.dao.api.GenerateDao;
-import com.kappadrive.dao.api.Id;
+import com.kappadrive.dao.api.Query;
 import com.kappadrive.dao.api.Table;
 import com.kappadrive.dao.gen.tool.AnnotationUtil;
 import com.kappadrive.dao.gen.tool.GenerateUtil;
@@ -42,6 +42,7 @@ import javax.lang.model.type.TypeMirror;
 import javax.lang.model.util.ElementKindVisitor9;
 import javax.lang.model.util.Types;
 import javax.tools.Diagnostic;
+import java.lang.annotation.Annotation;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.Collection;
@@ -141,11 +142,6 @@ public class GenerateDaoProcessor extends AbstractProcessor {
     private EntityMeta createEntityMeta(@Nonnull DeclaredType entityType) {
         Collection<FieldMeta> allFields = generateUtil.getAllFields(entityType);
         Collection<FieldMeta> keyFields = allFields.stream().filter(FieldMeta::isKey).collect(Collectors.toList());
-        if (keyFields.size() != 1) {
-            String exception = String.format("Exact 1 field in %s should be annotated with @%s", entityType, Id.class.getName());
-            processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR, exception);
-            throw new IllegalStateException(exception);
-        }
         String tableName = AnnotationUtil.getAnnotationValue(entityType.asElement(), Table.class, "name", String.class)
                 .orElseGet(() -> entityType.asElement().getSimpleName().toString().toLowerCase());
         return EntityMeta.builder()
@@ -158,17 +154,39 @@ public class GenerateDaoProcessor extends AbstractProcessor {
     @Nullable
     public MethodSpec createDaoMethod(@Nonnull ExecutableElement executableElement, @Nonnull ImplData implData,
                                       @Nonnull FieldSpec rowMapper, @Nonnull MethodSpec paramSourceMethod) {
-        String s = executableElement.getSimpleName().toString();
-        if (s.startsWith("find")) {
+        if (isSelectMethod(executableElement)) {
             return createFindMethod(executableElement, implData, rowMapper);
-        } else if (s.startsWith("insert")) {
+        } else if (isInsertMethod(executableElement)) {
             return createInsertMethod(executableElement, implData, paramSourceMethod);
-        } else if (s.startsWith("update")) {
+        } else if (isUpdateMethod(executableElement)) {
             return createUpdateMethod(executableElement, implData, paramSourceMethod);
-        } else if (s.startsWith("delete")) {
+        } else if (isDeleteMethod(executableElement)) {
             return createDeleteMethod(executableElement, implData);
         }
         throw new IllegalArgumentException("Unsupported method: " + executableElement);
+    }
+
+    private static boolean isSelectMethod(@Nonnull ExecutableElement executableElement) {
+        return isMethod(executableElement, "find", Query.Select.class);
+    }
+
+    private static boolean isInsertMethod(@Nonnull ExecutableElement executableElement) {
+        return isMethod(executableElement, "insert", Query.Insert.class);
+    }
+
+    private static boolean isUpdateMethod(@Nonnull ExecutableElement executableElement) {
+        return isMethod(executableElement, "update", Query.Update.class);
+    }
+
+    private static boolean isDeleteMethod(@Nonnull ExecutableElement executableElement) {
+        return isMethod(executableElement, "delete", Query.Delete.class);
+    }
+
+    private static boolean isMethod(@Nonnull ExecutableElement executableElement,
+                                    @Nonnull String prefix,
+                                    @Nonnull Class<? extends Annotation> annotationClass) {
+        return executableElement.getSimpleName().toString().startsWith(prefix)
+                || AnnotationUtil.getAnnotationMirror(executableElement, annotationClass).isPresent();
     }
 
     @Nonnull
