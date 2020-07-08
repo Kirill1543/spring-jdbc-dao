@@ -418,7 +418,7 @@ public final class GenerateUtil {
                 String varName = v.getSimpleName().toString();
                 FieldMeta f = findFieldByParameter(implData, v)
                         .orElseThrow(() -> new IllegalArgumentException("No field found for parameter " + varName));
-                builder.add("$L.$L($L)", entityVar, f.getSetter().getSimpleName(), v.getSimpleName());
+                builder.addStatement("$L.$L($L)", entityVar, f.getSetter().getSimpleName(), v.getSimpleName());
             });
         }
 

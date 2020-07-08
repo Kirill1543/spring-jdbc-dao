@@ -141,11 +141,6 @@ public class GenerateDaoProcessor extends AbstractProcessor {
     private EntityMeta createEntityMeta(@Nonnull DeclaredType entityType) {
         Collection<FieldMeta> allFields = generateUtil.getAllFields(entityType);
         Collection<FieldMeta> keyFields = allFields.stream().filter(FieldMeta::isKey).collect(Collectors.toList());
-        if (keyFields.size() != 1) {
-            String exception = String.format("Exact 1 field in %s should be annotated with @%s", entityType, Id.class.getName());
-            processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR, exception);
-            throw new IllegalStateException(exception);
-        }
         String tableName = AnnotationUtil.getAnnotationValue(entityType.asElement(), Table.class, "name", String.class)
                 .orElseGet(() -> entityType.asElement().getSimpleName().toString().toLowerCase());
         return EntityMeta.builder()
