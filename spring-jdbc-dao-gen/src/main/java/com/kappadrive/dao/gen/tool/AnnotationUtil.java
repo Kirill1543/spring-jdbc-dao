@@ -29,7 +29,7 @@ public final class AnnotationUtil {
         return element.getAnnotationMirrors()
                 .stream()
                 .filter(a -> a.getAnnotationType().toString()
-                        .equals(annotationClass.getName()))
+                        .equals(annotationClass.getCanonicalName()))
                 .map(a -> (AnnotationMirror) a)
                 .findAny();
     }

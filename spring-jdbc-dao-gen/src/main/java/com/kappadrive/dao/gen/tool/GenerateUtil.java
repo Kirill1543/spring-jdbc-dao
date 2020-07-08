@@ -49,13 +49,13 @@ public final class GenerateUtil {
 
     public GenerateUtil(ProcessingEnvironment processingEnv) {
         this.processingEnv = processingEnv;
-        objectType = processingEnv.getElementUtils().getTypeElement(Object.class.getName());
+        objectType = processingEnv.getElementUtils().getTypeElement(Object.class.getCanonicalName());
     }
 
     @Nonnull
     public AnnotationSpec createGeneratedAnnotation() {
         return AnnotationSpec.builder(Generated.class)
-                .addMember("value", "$S", GenerateDaoProcessor.class.getName())
+                .addMember("value", "$S", GenerateDaoProcessor.class.getCanonicalName())
                 .addMember("date", "$S", DateTimeFormatter.ISO_DATE_TIME.format(LocalDateTime.now()))
                 .build();
     }
@@ -112,7 +112,7 @@ public final class GenerateUtil {
                     @Override
                     public List<DeclaredType> visitDeclared(DeclaredType t, List<DeclaredType> o) {
                         TypeElement typeElement = (TypeElement) t.asElement();
-                        if (typeElement.getQualifiedName().contentEquals(interfaceType.getName())) {
+                        if (typeElement.getQualifiedName().contentEquals(interfaceType.getCanonicalName())) {
                             List<DeclaredType> hierarchy = new ArrayList<>();
                             hierarchy.add(t);
                             return hierarchy;
@@ -229,25 +229,25 @@ public final class GenerateUtil {
     public boolean hasType(@Nonnull final TypeMirror typeMirror, @Nonnull final Class<?> typeClass) {
         return processingEnv.getTypeUtils().isSameType(
                 typeMirror,
-                processingEnv.getElementUtils().getTypeElement(typeClass.getName()).asType());
+                processingEnv.getElementUtils().getTypeElement(typeClass.getCanonicalName()).asType());
     }
 
     public boolean isSubType(@Nonnull final TypeMirror typeMirror, @Nonnull final Class<?> typeClass) {
         return processingEnv.getTypeUtils().isSubtype(
                 typeMirror,
-                processingEnv.getElementUtils().getTypeElement(typeClass.getName()).asType());
+                processingEnv.getElementUtils().getTypeElement(typeClass.getCanonicalName()).asType());
     }
 
     public boolean isAssignable(@Nonnull final TypeMirror typeMirror, @Nonnull final Class<?> typeClass) {
         return processingEnv.getTypeUtils().isAssignable(
                 typeMirror,
-                processingEnv.getElementUtils().getTypeElement(typeClass.getName()).asType());
+                processingEnv.getElementUtils().getTypeElement(typeClass.getCanonicalName()).asType());
     }
 
     public boolean isAssignableGeneric(@Nonnull final TypeMirror typeMirror, @Nonnull final Class<?> typeClass) {
         return processingEnv.getTypeUtils().isAssignable(
                 processingEnv.getTypeUtils().erasure(typeMirror),
-                processingEnv.getElementUtils().getTypeElement(typeClass.getName()).asType());
+                processingEnv.getElementUtils().getTypeElement(typeClass.getCanonicalName()).asType());
     }
 
     @Nonnull
@@ -447,6 +447,6 @@ public final class GenerateUtil {
 
     @Nonnull
     public DeclaredType getDeclaredType(@Nonnull final Class<?> type) {
-        return processingEnv.getTypeUtils().getDeclaredType(processingEnv.getElementUtils().getTypeElement(type.getName()));
+        return processingEnv.getTypeUtils().getDeclaredType(processingEnv.getElementUtils().getTypeElement(type.getCanonicalName()));
     }
 }
