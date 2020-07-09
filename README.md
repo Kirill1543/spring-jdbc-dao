@@ -47,17 +47,14 @@ public class User {
 }
 @GenerateDao(User.class)
 public interface UserDao {
-    // supported
     List<User> findAll();
 
-    // supported
     Optional<User> findById(Long id);
 
-    // supported
     List<User> findByFirstName(String firstName);
 
-    // not supported
-    List<User> findByLastName(String v);
+    @Query.Select
+    List<User> getFamily(String lastName);
 }
 ``` 
 ### INSERT
@@ -79,6 +76,9 @@ public interface UserDao {
     <E extends User> E insert(E user);
 
     User insert(String firstName, String lastName);
+
+    @Query.Insert
+    User addNewUser(String firstName);
 }
 ``` 
 ### UPDATE
@@ -93,7 +93,10 @@ public class User {
 }
 @GenerateDao(User.class)
 public interface UserDao {
-    void update (E user);
+    void update(User user);
+
+    @Query.Update
+    void rename(User user);
 }
 ``` 
 ### DELETE
@@ -112,6 +115,9 @@ public interface UserDao {
     void deleteAll();
 
     void deleteByLastName(String lastName);
+
+    @Query.Delete
+    void removeAll(String firstName);
 }
 ```
 ## Notes
