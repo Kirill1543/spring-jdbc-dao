@@ -113,6 +113,7 @@ class UserDaoTest {
         userDao.insert(user);
 
         assertThat(userDao.findByName("Kyl")).isEmpty();
+        assertThat(userDao.findByNameAndRole("Kyle", UserRole.ADMIN)).isEmpty();
         assertThat(userDao.findByName("Kyle"))
                 .hasSize(1)
                 .contains(user);

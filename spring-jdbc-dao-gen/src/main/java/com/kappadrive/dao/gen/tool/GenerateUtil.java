@@ -365,13 +365,12 @@ public final class GenerateUtil {
                 .add("final var $N = new $T()", paramSource, MapSqlParameterSource.class);
         parameters.forEach(v -> {
             String varName = v.getSimpleName().toString();
-            FieldMeta f = findFieldByParameter(implData, v)
-                    .orElseThrow(() -> new IllegalArgumentException("No field found for parameter " + varName));
-            if (f.getSqlType() == null) {
-                builder.add("\n.addValue($S, $L)", varName, varName);
-            } else {
-                builder.add("\n.addValue($S, $L, $L)", varName, varName, f.getSqlType());
-            }
+            findFieldByParameter(implData, v)
+                    .map(FieldMeta::getSqlType)
+                    .ifPresentOrElse(
+                            sqlType -> builder.add("\n.addValue($S, $L, $L)", varName, varName, sqlType),
+                            () -> builder.add("\n.addValue($S, $L)", varName, varName)
+                    );
         });
         return builder.build();
     }

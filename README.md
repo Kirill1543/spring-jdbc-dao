@@ -55,6 +55,9 @@ public interface UserDao {
 
     @Query.Select
     List<User> getFamily(String lastName);
+
+    @Query.Select("SELECT * FROM user where first_name = :firstName")
+    List<User> getNames(String firstName);
 }
 ``` 
 ### INSERT
@@ -79,6 +82,9 @@ public interface UserDao {
 
     @Query.Insert
     User addNewUser(String firstName);
+
+    @Query.Insert("INSERT INTO user (last_name) VALUES (:lastName)")
+    User addFamily(String lastName);
 }
 ``` 
 ### UPDATE
@@ -97,6 +103,9 @@ public interface UserDao {
 
     @Query.Update
     void rename(User user);
+
+    @Query.Update("UPDATE user SET last_name = :lastName where first_name = :firstName")
+    void rename(String firstName, Long lastName);
 }
 ``` 
 ### DELETE
@@ -118,6 +127,9 @@ public interface UserDao {
 
     @Query.Delete
     void removeAll(String firstName);
+
+    @Query.Delete("DELETE FROM user WHERE last_name = :lastName")
+    void removeFamily(String lastName);
 }
 ```
 ## Notes
@@ -132,7 +144,6 @@ compileJava {
 ```
 ## TODO checklist for first complete release:
   - Add parameter annotation
-  - Add possibility to create custom hardcoded queries for each method type
   - Make possible to use such queries from properties via `@Value` annotation
   - Create alternative for dynamic sql queries instead of static generated one
   - Simplify working with entities, which are result of join statements

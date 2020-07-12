@@ -1,6 +1,7 @@
 package com.kappadrive.dao.test;
 
 import com.kappadrive.dao.test.model.User;
+import com.kappadrive.dao.test.model.UserRole;
 import com.kappadrive.dao.test.repository.AnotherUserDao;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -59,5 +60,28 @@ class AnotherUserDaoTest {
         userDao.removeFullFamily("A");
         assertThat(userDao.getUser(1L)).isEmpty();
         assertThat(userDao.getUser(2L)).isEmpty();
+    }
+
+    @Test
+    void testWithValues() {
+        User user = new User();
+        user.setName("Kenny");
+        user.setOtherName("A");
+        user.setRole(UserRole.ADMIN);
+        userDao.addNewUser(user);
+
+        User user2 = userDao.add("Kyle");
+        userDao.setFamily("A", "Kyle");
+        user2.setOtherName("A");
+
+        assertThat(userDao.restoreAllUsers("A"))
+                .hasSize(2)
+                .contains(user, user2);
+
+        userDao.remove("Kenny", UserRole.ADMIN);
+
+        assertThat(userDao.restoreAllUsers("A"))
+                .hasSize(1)
+                .contains(user2);
     }
 }

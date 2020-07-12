@@ -12,20 +12,24 @@ public @interface Query {
     @Retention(RetentionPolicy.SOURCE)
     @Target({ElementType.ANNOTATION_TYPE, ElementType.METHOD})
     @interface Select {
+        String value() default "";
     }
 
     @Retention(RetentionPolicy.SOURCE)
     @Target({ElementType.ANNOTATION_TYPE, ElementType.METHOD})
     @interface Insert {
+        String value() default "";
     }
 
     @Retention(RetentionPolicy.SOURCE)
     @Target({ElementType.ANNOTATION_TYPE, ElementType.METHOD})
     @interface Delete {
+        String value() default "";
     }
 
     @Retention(RetentionPolicy.SOURCE)
     @Target({ElementType.ANNOTATION_TYPE, ElementType.METHOD})
     @interface Update {
+        String value() default "";
     }
 }
