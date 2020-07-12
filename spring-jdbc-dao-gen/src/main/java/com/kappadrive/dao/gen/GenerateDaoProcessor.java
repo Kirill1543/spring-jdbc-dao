@@ -240,9 +240,7 @@ public class GenerateDaoProcessor extends AbstractProcessor {
 
     @Nonnull
     private MethodSpec createFindMethod(@Nonnull ExecutableElement executableElement, @Nonnull ImplData implData, @Nonnull FieldSpec rowMapper) {
-        final String query = String.format("SELECT * FROM %s%s",
-                implData.getEntityMeta().getTableName(),
-                generateUtil.createCondition(executableElement, implData));
+        final String query = createSelectQuery(executableElement, implData);
         MethodSpec.Builder builder = methodBuilder(executableElement, implData)
                 .addStatement(generateUtil.createParamSourceFromParameters(executableElement, PARAM_SOURCE, implData));
         TypeMirror returnType = executableElement.getReturnType();
@@ -253,7 +251,7 @@ public class GenerateDaoProcessor extends AbstractProcessor {
                     TEMPLATE_NAME, query, PARAM_SOURCE, rowMapper);
         } else {
             if (!generateUtil.isAssignableGeneric(returnType, Optional.class)) {
-                throw new IllegalArgumentException("find* method return should be Optional or List/Collection/Iterable");
+                throw new IllegalArgumentException("SELECT method return type should be Optional or List/Collection/Iterable");
             }
             builder.addStatement("return $T.ofNullable($T.singleResult(this.$N.query($S, $N, this.$N)))",
                     Optional.class, DataAccessUtils.class,
@@ -263,17 +261,18 @@ public class GenerateDaoProcessor extends AbstractProcessor {
     }
 
     @Nonnull
+    private String createSelectQuery(@Nonnull ExecutableElement executableElement, @Nonnull ImplData implData) {
+        return AnnotationUtil.getAnnotationValue(executableElement, Query.Select.class, "value", String.class)
+                .orElseGet(() -> String.format("SELECT * FROM %s%s",
+                        implData.getEntityMeta().getTableName(),
+                        generateUtil.createCondition(executableElement, implData)));
+    }
+
+    @Nonnull
     private MethodSpec createInsertMethod(@Nonnull ExecutableElement executableElement, @Nonnull ImplData implData,
                                           @Nonnull MethodSpec paramSourceMethod) {
         CodeBlock paramSource = generateUtil.createParamSourceFromEntity(executableElement, PARAM_SOURCE, implData, paramSourceMethod);
-        String insertFields = implData.getEntityMeta().getFields().stream()
-                .filter(Predicate.not(FieldMeta::isGenerated)).map(FieldMeta::getColumnName)
-                .collect(Collectors.joining(", "));
-        String insertValues = implData.getEntityMeta().getFields().stream()
-                .filter(Predicate.not(FieldMeta::isGenerated)).map(f -> ":" + f.getName())
-                .collect(Collectors.joining(", "));
-        String query = String.format("INSERT INTO %s (%s) VALUES (%s)",
-                implData.getEntityMeta().getTableName(), insertFields, insertValues);
+        String query = createInsertQuery(executableElement, implData);
         MethodSpec.Builder builder = methodBuilder(executableElement, implData)
                 .addStatement(paramSource)
                 .addStatement("final var keyHolder = new $T()", GeneratedKeyHolder.class)
@@ -288,14 +287,26 @@ public class GenerateDaoProcessor extends AbstractProcessor {
     }
 
     @Nonnull
+    private String createInsertQuery(@Nonnull ExecutableElement executableElement, @Nonnull ImplData implData) {
+        Optional<String> value = AnnotationUtil.getAnnotationValue(executableElement, Query.Insert.class, "value", String.class);
+        if (value.isPresent()) {
+            return value.get();
+        }
+        String insertFields = implData.getEntityMeta().getFields().stream()
+                .filter(Predicate.not(FieldMeta::isGenerated)).map(FieldMeta::getColumnName)
+                .collect(Collectors.joining(", "));
+        String insertValues = implData.getEntityMeta().getFields().stream()
+                .filter(Predicate.not(FieldMeta::isGenerated)).map(f -> ":" + f.getName())
+                .collect(Collectors.joining(", "));
+        return String.format("INSERT INTO %s (%s) VALUES (%s)",
+                implData.getEntityMeta().getTableName(), insertFields, insertValues);
+    }
+
+    @Nonnull
     private MethodSpec createUpdateMethod(@Nonnull ExecutableElement executableElement, @Nonnull ImplData implData,
                                           @Nonnull MethodSpec paramSourceMethod) {
         CodeBlock paramSource = generateUtil.createParamSourceFromEntity(executableElement, PARAM_SOURCE, implData, paramSourceMethod);
-        String query = String.format("UPDATE %s SET %s%s",
-                implData.getEntityMeta().getTableName(),
-                generateUtil.createStatement(implData.getEntityMeta().getFields()
-                        .stream().filter(f -> !f.isGenerated() && !f.isKey()).collect(Collectors.toList()), ", "),
-                generateUtil.createCondition(implData.getEntityMeta().getKeyFields()));
+        String query = createUpdateQuery(executableElement, implData);
         return methodBuilder(executableElement, implData)
                 .addStatement(paramSource)
                 .addStatement("this.$N.update($S, $N)", TEMPLATE_NAME, query, PARAM_SOURCE)
@@ -303,15 +314,31 @@ public class GenerateDaoProcessor extends AbstractProcessor {
     }
 
     @Nonnull
+    private String createUpdateQuery(@Nonnull ExecutableElement executableElement, @Nonnull ImplData implData) {
+        return AnnotationUtil.getAnnotationValue(executableElement, Query.Update.class, "value", String.class)
+                .orElseGet(() -> String.format("UPDATE %s SET %s%s",
+                        implData.getEntityMeta().getTableName(),
+                        generateUtil.createStatement(implData.getEntityMeta().getFields()
+                                .stream().filter(f -> !f.isGenerated() && !f.isKey()).collect(Collectors.toList()), ", "),
+                        generateUtil.createCondition(implData.getEntityMeta().getKeyFields())));
+    }
+
+    @Nonnull
     private MethodSpec createDeleteMethod(@Nonnull ExecutableElement executableElement, @Nonnull ImplData implData) {
         CodeBlock paramSource = generateUtil.createParamSourceFromParameters(executableElement, PARAM_SOURCE, implData);
-        String query = String.format("DELETE FROM %s%s",
-                implData.getEntityMeta().getTableName(),
-                generateUtil.createCondition(executableElement, implData));
+        String query = createDeleteQuery(executableElement, implData);
         return methodBuilder(executableElement, implData)
                 .addStatement(paramSource)
                 .addStatement("this.$N.update($S, $N)", TEMPLATE_NAME, query, PARAM_SOURCE)
                 .build();
+    }
+
+    @Nonnull
+    private String createDeleteQuery(@Nonnull ExecutableElement executableElement, @Nonnull ImplData implData) {
+        return AnnotationUtil.getAnnotationValue(executableElement, Query.Delete.class, "value", String.class)
+                .orElseGet(() -> String.format("DELETE FROM %s%s",
+                        implData.getEntityMeta().getTableName(),
+                        generateUtil.createCondition(executableElement, implData)));
     }
 
     @Nonnull
