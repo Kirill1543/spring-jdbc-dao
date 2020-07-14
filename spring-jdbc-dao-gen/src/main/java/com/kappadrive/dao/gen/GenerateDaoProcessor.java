@@ -72,8 +72,13 @@ public class GenerateDaoProcessor extends AbstractProcessor {
     private void processRootElement(@Nonnull Element rootElement) {
         processingEnv.getMessager().printMessage(Diagnostic.Kind.NOTE, "Starting DAO generation for " + rootElement);
         ImplData implData = rootElement.accept(createElementVisitor(), null);
+
+        boolean isAbstract = AnnotationUtil.getAnnotationValue(implData.getInterfaceType().asElement(),
+                GenerateDao.class, "makeAbstract", Boolean.class).orElse(false);
+        Modifier elementsModifier = isAbstract ? Modifier.PROTECTED : Modifier.PRIVATE;
+
         MethodSpec constructor = MethodSpec.constructorBuilder()
-                .addModifiers(Modifier.PUBLIC)
+                .addModifiers(isAbstract ? Modifier.PROTECTED : Modifier.PUBLIC)
                 .addParameter(ClassName.get(NamedParameterJdbcTemplate.class), TEMPLATE_NAME)
                 .addStatement("this.$N = $N", TEMPLATE_NAME, TEMPLATE_NAME)
                 .build();
@@ -81,10 +86,10 @@ public class GenerateDaoProcessor extends AbstractProcessor {
         TypeSpec rowMapperClass = createRowMapperInnerClass(implData);
         FieldSpec rowMapper = FieldSpec.builder(
                 createRowMapperType(implData),
-                "rowMapper", Modifier.PRIVATE, Modifier.FINAL)
+                "rowMapper", elementsModifier, Modifier.FINAL)
                 .initializer("new $N()", rowMapperClass)
                 .build();
-        MethodSpec paramSourceMethod = createParamSourceMethod(implData);
+        MethodSpec paramSourceMethod = createParamSourceMethod(implData, elementsModifier);
 
         List<MethodSpec> daoMethods = implData.getDaoMethods()
                 .stream()
@@ -92,20 +97,25 @@ public class GenerateDaoProcessor extends AbstractProcessor {
                 .filter(Objects::nonNull)
                 .collect(Collectors.toList());
 
-        TypeSpec impl = TypeSpec.classBuilder(implData.getInterfaceElement().getSimpleName() + "Impl")
+        String implName = isAbstract
+                ? "Abstract" + implData.getInterfaceElement().getSimpleName()
+                : implData.getInterfaceElement().getSimpleName() + "Impl";
+        TypeSpec.Builder impl = TypeSpec.classBuilder(implName)
                 .addModifiers(Modifier.PUBLIC)
                 .addAnnotation(generateUtil.createGeneratedAnnotation())
-                .addAnnotation(Repository.class)
                 .addSuperinterface(implData.getInterfaceElement().asType())
-                .addField(TypeName.get(NamedParameterJdbcTemplate.class), TEMPLATE_NAME, Modifier.PRIVATE, Modifier.FINAL)
+                .addField(TypeName.get(NamedParameterJdbcTemplate.class), TEMPLATE_NAME, elementsModifier, Modifier.FINAL)
                 .addField(rowMapper)
                 .addMethod(constructor)
                 .addMethods(daoMethods)
                 .addType(rowMapperClass)
-                .addMethod(paramSourceMethod)
-                .build();
+                .addMethod(paramSourceMethod);
 
-        JavaFile javaFile = JavaFile.builder(implData.getPackageName(), impl)
+        if (!isAbstract) {
+            impl.addAnnotation(Repository.class);
+        }
+
+        JavaFile javaFile = JavaFile.builder(implData.getPackageName(), impl.build())
                 .build();
 
         generateUtil.writeSafe(javaFile);
@@ -155,7 +165,7 @@ public class GenerateDaoProcessor extends AbstractProcessor {
     public MethodSpec createDaoMethod(@Nonnull ExecutableElement executableElement, @Nonnull ImplData implData,
                                       @Nonnull FieldSpec rowMapper, @Nonnull MethodSpec paramSourceMethod) {
         if (isSelectMethod(executableElement)) {
-            return createFindMethod(executableElement, implData, rowMapper);
+            return createSelectMethod(executableElement, implData, rowMapper);
         } else if (isInsertMethod(executableElement)) {
             return createInsertMethod(executableElement, implData, paramSourceMethod);
         } else if (isUpdateMethod(executableElement)) {
@@ -190,7 +200,7 @@ public class GenerateDaoProcessor extends AbstractProcessor {
     }
 
     @Nonnull
-    private MethodSpec createParamSourceMethod(@Nonnull ImplData implData) {
+    private MethodSpec createParamSourceMethod(@Nonnull ImplData implData, @Nonnull Modifier modifier) {
         String paramName = implData.getEntityType().asElement().getSimpleName().toString().toLowerCase().substring(0, 1);
         ParameterSpec entityParameter = ParameterSpec.builder(TypeName.get(implData.getEntityType()), paramName)
                 .addAnnotation(Nonnull.class)
@@ -198,7 +208,7 @@ public class GenerateDaoProcessor extends AbstractProcessor {
         CodeBlock paramSource = generateUtil.createParamSourceFromComplexType(paramName, PARAM_SOURCE, implData);
         return MethodSpec.methodBuilder("createParamSource")
                 .returns(SqlParameterSource.class)
-                .addModifiers(Modifier.PRIVATE, Modifier.STATIC)
+                .addModifiers(modifier)
                 .addParameter(entityParameter)
                 .addAnnotation(Nonnull.class)
                 .addStatement(paramSource)
@@ -239,7 +249,7 @@ public class GenerateDaoProcessor extends AbstractProcessor {
     }
 
     @Nonnull
-    private MethodSpec createFindMethod(@Nonnull ExecutableElement executableElement, @Nonnull ImplData implData, @Nonnull FieldSpec rowMapper) {
+    private MethodSpec createSelectMethod(@Nonnull ExecutableElement executableElement, @Nonnull ImplData implData, @Nonnull FieldSpec rowMapper) {
         final String query = createSelectQuery(executableElement, implData);
         MethodSpec.Builder builder = methodBuilder(executableElement, implData)
                 .addStatement(generateUtil.createParamSourceFromParameters(executableElement, PARAM_SOURCE, implData));

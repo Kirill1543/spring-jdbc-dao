@@ -6,8 +6,15 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 @Retention(RetentionPolicy.SOURCE)
-@Target({ElementType.ANNOTATION_TYPE, ElementType.METHOD})
 public @interface Query {
+
+    @Retention(RetentionPolicy.SOURCE)
+    @Target({ElementType.ANNOTATION_TYPE, ElementType.PARAMETER})
+    @interface Param {
+        String value();
+
+        int type() default Integer.MIN_VALUE;
+    }
 
     @Retention(RetentionPolicy.SOURCE)
     @Target({ElementType.ANNOTATION_TYPE, ElementType.METHOD})

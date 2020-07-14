@@ -3,6 +3,7 @@ package com.kappadrive.dao.gen.tool;
 import com.kappadrive.dao.api.Column;
 import com.kappadrive.dao.api.GeneratedValue;
 import com.kappadrive.dao.api.Id;
+import com.kappadrive.dao.api.Query;
 import com.kappadrive.dao.gen.FieldMeta;
 import com.kappadrive.dao.gen.GenerateDaoProcessor;
 import com.kappadrive.dao.gen.ImplData;
@@ -17,6 +18,7 @@ import org.springframework.util.StringUtils;
 import javax.annotation.Nonnull;
 import javax.annotation.processing.Generated;
 import javax.annotation.processing.ProcessingEnvironment;
+import javax.lang.model.element.AnnotationMirror;
 import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.TypeElement;
@@ -365,12 +367,18 @@ public final class GenerateUtil {
                 .add("final var $N = new $T()", paramSource, MapSqlParameterSource.class);
         parameters.forEach(v -> {
             String varName = v.getSimpleName().toString();
-            findFieldByParameter(implData, v)
-                    .map(FieldMeta::getSqlType)
-                    .ifPresentOrElse(
-                            sqlType -> builder.add("\n.addValue($S, $L, $L)", varName, varName, sqlType),
-                            () -> builder.add("\n.addValue($S, $L)", varName, varName)
-                    );
+            Optional<AnnotationMirror> param = AnnotationUtil.getAnnotationMirror(v, Query.Param.class);
+            String valueName = param.flatMap(p -> AnnotationUtil.getAnnotationValue(p, "value", String.class))
+                    .orElse(varName);
+
+            Optional<Integer> sqlType = param.flatMap(p -> AnnotationUtil.getAnnotationValue(p, "type", Integer.class))
+                    .filter(type -> type != Integer.MIN_VALUE)
+                    .or(() -> findFieldByParameter(implData, v).map(FieldMeta::getSqlType));
+
+            sqlType.ifPresentOrElse(
+                    type -> builder.add("\n.addValue($S, $L, $L)", valueName, varName, type),
+                    () -> builder.add("\n.addValue($S, $L)", valueName, varName)
+            );
         });
         return builder.build();
     }

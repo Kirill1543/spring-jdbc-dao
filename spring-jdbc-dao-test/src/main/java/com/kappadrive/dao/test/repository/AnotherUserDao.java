@@ -5,6 +5,7 @@ import com.kappadrive.dao.api.Query;
 import com.kappadrive.dao.test.model.User;
 import com.kappadrive.dao.test.model.UserRole;
 
+import java.sql.Types;
 import java.util.List;
 import java.util.Optional;
 
@@ -26,12 +27,12 @@ public interface AnotherUserDao {
     @Query.Select("SELECT * FROM users WHERE family_name = :value")
     List<User> restoreAllUsers(String value);
 
-    @Query.Insert("INSERT INTO users (name) VALUES (:name)")
-    User add(String name);
+    @Query.Insert("INSERT INTO users (name) VALUES (:value)")
+    User add(@Query.Param("value") String name);
 
-    @Query.Update("UPDATE users SET family_name = :otherName where name = :name")
-    void setFamily(String otherName, String name);
+    @Query.Update("UPDATE users SET family_name = :family where name = :name")
+    void setFamily(String family, String name);
 
-    @Query.Delete("DELETE FROM users WHERE name = :name AND role = :role")
-    void remove(String name, UserRole role);
+    @Query.Delete("DELETE FROM users WHERE name = :name AND role = :r")
+    void remove(String name, @Query.Param(value = "r", type = Types.VARCHAR) UserRole userRole);
 }

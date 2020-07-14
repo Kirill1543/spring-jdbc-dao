@@ -35,7 +35,7 @@ There are 4 supported types of methods
   - Pattern: name is `find*` or has annotation `@Query.Select`
   - Return types:
     - `Optional<E>` for single return
-    - `List/Collection/Iterable<E>` for multiple return
+    - `List/Collection/Iterable` for multiple return
   - Parameters: zero or any number of parameters with types and names 
   matching `Entity` fields
   - Example:
@@ -56,15 +56,15 @@ public interface UserDao {
     @Query.Select
     List<User> getFamily(String lastName);
 
-    @Query.Select("SELECT * FROM user where first_name = :firstName")
-    List<User> getNames(String firstName);
+    @Query.Select("SELECT * FROM user where first_name = :name")
+    List<User> getNames(@Query.Param("name") String firstName);
 }
 ``` 
 ### INSERT
   - Pattern: name is `insert*` or has annotation `@Query.Insert`
   - Return types: 
     - `Entity` or generic `E extends Entity` for single `Entity` parameter
-    - `Entity` for other cases. In this case new `Entity` will be created 
+    - `Entity` for other cases. In this case new `Entity` will be created
   - Parameters:
     - single parameter of type `Entity` or `E extends Entity`
     - single or multiple parameters with types and names matching `Entity` fields
@@ -90,7 +90,9 @@ public interface UserDao {
 ### UPDATE
   - Pattern: name is `update*` or has annotation `@Query.Update`
   - Return types: only `void`
-  - Parameters: single parameter of type `Entity`
+  - Parameters: 
+    - single parameter of type `Entity`
+    - single or multiple parameters with types and names matching `Entity` fields
   - Example:
 ```java
 public class User {
@@ -143,7 +145,6 @@ compileJava {
 }
 ```
 ## TODO checklist for first complete release:
-  - Add parameter annotation
   - Make possible to use such queries from properties via `@Value` annotation
   - Create alternative for dynamic sql queries instead of static generated one
   - Simplify working with entities, which are result of join statements
