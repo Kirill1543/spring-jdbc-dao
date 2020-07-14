@@ -155,7 +155,7 @@ public class GenerateDaoProcessor extends AbstractProcessor {
     public MethodSpec createDaoMethod(@Nonnull ExecutableElement executableElement, @Nonnull ImplData implData,
                                       @Nonnull FieldSpec rowMapper, @Nonnull MethodSpec paramSourceMethod) {
         if (isSelectMethod(executableElement)) {
-            return createFindMethod(executableElement, implData, rowMapper);
+            return createSelectMethod(executableElement, implData, rowMapper);
         } else if (isInsertMethod(executableElement)) {
             return createInsertMethod(executableElement, implData, paramSourceMethod);
         } else if (isUpdateMethod(executableElement)) {
@@ -239,7 +239,7 @@ public class GenerateDaoProcessor extends AbstractProcessor {
     }
 
     @Nonnull
-    private MethodSpec createFindMethod(@Nonnull ExecutableElement executableElement, @Nonnull ImplData implData, @Nonnull FieldSpec rowMapper) {
+    private MethodSpec createSelectMethod(@Nonnull ExecutableElement executableElement, @Nonnull ImplData implData, @Nonnull FieldSpec rowMapper) {
         final String query = createSelectQuery(executableElement, implData);
         MethodSpec.Builder builder = methodBuilder(executableElement, implData)
                 .addStatement(generateUtil.createParamSourceFromParameters(executableElement, PARAM_SOURCE, implData));
