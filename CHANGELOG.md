@@ -1,4 +1,4 @@
-## 1.0
+## 1.0.0
 First release with base functional.
 # Added
  - Main `@GeneratedDao` which triggers annotation processor to generate DAOs
