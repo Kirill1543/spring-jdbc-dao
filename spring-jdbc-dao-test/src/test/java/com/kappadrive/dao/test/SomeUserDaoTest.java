@@ -33,5 +33,7 @@ class SomeUserDaoTest {
         assertThat(userDao.findByName("Eric"))
                 .hasSize(1)
                 .containsExactly(inserted);
+
+        assertThat(userDao.findById(inserted.getId())).isEmpty();
     }
 }

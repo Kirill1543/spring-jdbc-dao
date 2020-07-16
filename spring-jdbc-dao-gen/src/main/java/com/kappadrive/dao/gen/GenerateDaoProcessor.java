@@ -3,6 +3,7 @@ package com.kappadrive.dao.gen;
 import com.google.auto.service.AutoService;
 import com.kappadrive.dao.api.GenerateDao;
 import com.kappadrive.dao.api.Query;
+import com.kappadrive.dao.api.SkipGeneration;
 import com.kappadrive.dao.api.Table;
 import com.kappadrive.dao.gen.tool.AnnotationUtil;
 import com.kappadrive.dao.gen.tool.GenerateUtil;
@@ -60,6 +61,7 @@ public class GenerateDaoProcessor extends AbstractProcessor {
 
     private static final String TEMPLATE_NAME = "template";
     private static final String PARAM_SOURCE = "paramSource";
+    private static final String ROW_MAPPER = "rowMapper";
     private GenerateUtil generateUtil;
 
     @Override
@@ -73,31 +75,20 @@ public class GenerateDaoProcessor extends AbstractProcessor {
         processingEnv.getMessager().printMessage(Diagnostic.Kind.NOTE, "Starting DAO generation for " + rootElement);
         ImplData implData = rootElement.accept(createElementVisitor(), null);
 
-        boolean isAbstract = AnnotationUtil.getAnnotationValue(implData.getInterfaceType().asElement(),
-                GenerateDao.class, "makeAbstract", Boolean.class).orElse(false);
-        Modifier elementsModifier = isAbstract ? Modifier.PROTECTED : Modifier.PRIVATE;
-
-        MethodSpec constructor = MethodSpec.constructorBuilder()
-                .addModifiers(isAbstract ? Modifier.PROTECTED : Modifier.PUBLIC)
-                .addParameter(ClassName.get(NamedParameterJdbcTemplate.class), TEMPLATE_NAME)
-                .addStatement("this.$N = $N", TEMPLATE_NAME, TEMPLATE_NAME)
-                .build();
+        Modifier elementsModifier = implData.isMakeAbstract() ? Modifier.PROTECTED : Modifier.PRIVATE;
 
         TypeSpec rowMapperClass = createRowMapperInnerClass(implData);
-        FieldSpec rowMapper = FieldSpec.builder(
-                createRowMapperType(implData),
-                "rowMapper", elementsModifier, Modifier.FINAL)
-                .initializer("new $N()", rowMapperClass)
-                .build();
+        FieldSpec rowMapper = createRowMapperField(implData, rowMapperClass);
         MethodSpec paramSourceMethod = createParamSourceMethod(implData, elementsModifier);
 
         List<MethodSpec> daoMethods = implData.getDaoMethods()
                 .stream()
+                .filter(e -> !implData.isMakeAbstract() || AnnotationUtil.getAnnotationMirror(e, SkipGeneration.class).isEmpty())
                 .map(e -> createDaoMethod(e, implData, rowMapper, paramSourceMethod))
                 .filter(Objects::nonNull)
                 .collect(Collectors.toList());
 
-        String implName = isAbstract
+        String implName = implData.isMakeAbstract()
                 ? "Abstract" + implData.getInterfaceElement().getSimpleName()
                 : implData.getInterfaceElement().getSimpleName() + "Impl";
         TypeSpec.Builder impl = TypeSpec.classBuilder(implName)
@@ -106,19 +97,51 @@ public class GenerateDaoProcessor extends AbstractProcessor {
                 .addSuperinterface(implData.getInterfaceElement().asType())
                 .addField(TypeName.get(NamedParameterJdbcTemplate.class), TEMPLATE_NAME, elementsModifier, Modifier.FINAL)
                 .addField(rowMapper)
-                .addMethod(constructor)
                 .addMethods(daoMethods)
                 .addType(rowMapperClass)
                 .addMethod(paramSourceMethod);
 
-        if (!isAbstract) {
-            impl.addAnnotation(Repository.class);
+        if (implData.isMakeAbstract()) {
+            MethodSpec constructorTemplateAndRowMapper = MethodSpec.constructorBuilder()
+                    .addModifiers(Modifier.PROTECTED)
+                    .addParameter(ClassName.get(NamedParameterJdbcTemplate.class), TEMPLATE_NAME)
+                    .addParameter(createRowMapperType(implData), ROW_MAPPER)
+                    .addStatement("this.$N = $N", TEMPLATE_NAME, TEMPLATE_NAME)
+                    .addStatement("this.$N = $N", ROW_MAPPER, ROW_MAPPER)
+                    .build();
+            MethodSpec constructorTemplate = MethodSpec.constructorBuilder()
+                    .addModifiers(Modifier.PROTECTED)
+                    .addParameter(ClassName.get(NamedParameterJdbcTemplate.class), TEMPLATE_NAME)
+                    .addStatement("this($N, new $N())", TEMPLATE_NAME, rowMapperClass)
+                    .build();
+            impl.addModifiers(Modifier.ABSTRACT)
+                    .addMethod(constructorTemplateAndRowMapper)
+                    .addMethod(constructorTemplate);
+        } else {
+            MethodSpec constructor = MethodSpec.constructorBuilder()
+                    .addModifiers(Modifier.PUBLIC)
+                    .addParameter(ClassName.get(NamedParameterJdbcTemplate.class), TEMPLATE_NAME)
+                    .addStatement("this.$N = $N", TEMPLATE_NAME, TEMPLATE_NAME)
+                    .build();
+            impl.addAnnotation(Repository.class)
+                    .addMethod(constructor);
         }
 
         JavaFile javaFile = JavaFile.builder(implData.getPackageName(), impl.build())
                 .build();
 
         generateUtil.writeSafe(javaFile);
+    }
+
+    @Nonnull
+    private FieldSpec createRowMapperField(@Nonnull ImplData implData, @Nonnull TypeSpec rowMapperClass) {
+        FieldSpec.Builder builder = FieldSpec.builder(
+                createRowMapperType(implData),
+                ROW_MAPPER, implData.isMakeAbstract() ? Modifier.PROTECTED : Modifier.PRIVATE, Modifier.FINAL);
+        if (!implData.isMakeAbstract()) {
+            builder.initializer("new $N()", rowMapperClass);
+        }
+        return builder.build();
     }
 
     @Nonnull
@@ -136,13 +159,16 @@ public class GenerateDaoProcessor extends AbstractProcessor {
                 Collection<ExecutableElement> allMethods = generateUtil.getAllAbstractMethods(e);
                 DeclaredType entityType = AnnotationUtil.getAnnotationValue(e, GenerateDao.class, "value", DeclaredType.class)
                         .orElseThrow(IllegalStateException::new);
+                DeclaredType interfaceType = (DeclaredType) e.asType();
                 return ImplData.builder()
                         .packageName(packageElement.getQualifiedName().toString())
                         .interfaceElement(e)
-                        .interfaceType((DeclaredType) e.asType())
+                        .interfaceType(interfaceType)
                         .entityType(entityType)
                         .entityMeta(createEntityMeta(entityType))
                         .daoMethods(allMethods)
+                        .makeAbstract(AnnotationUtil.getAnnotationValue(interfaceType.asElement(),
+                                GenerateDao.class, "makeAbstract", Boolean.class).isPresent())
                         .build();
             }
         };
@@ -243,7 +269,7 @@ public class GenerateDaoProcessor extends AbstractProcessor {
         });
         return TypeSpec.classBuilder(implData.getEntityType().asElement().getSimpleName().toString() + "RowMapper")
                 .addSuperinterface(createRowMapperType(implData))
-                .addModifiers(Modifier.PRIVATE, Modifier.STATIC)
+                .addModifiers(implData.isMakeAbstract() ? Modifier.PROTECTED : Modifier.PRIVATE, Modifier.STATIC)
                 .addMethod(builder.addStatement("return entity").build())
                 .build();
     }
