@@ -144,7 +144,7 @@ compileJava {
     options.compilerArgs << '-parameters'
 }
 ```
-## TODO checklist for first complete release:
+## TODO checklist:
   - Make possible to use such queries from properties via `@Value` annotation
   - Create alternative for dynamic sql queries instead of static generated one
   - Simplify working with entities, which are result of join statements

@@ -18,4 +18,5 @@ public class ImplData {
     private final DeclaredType entityType;
     private final EntityMeta entityMeta;
     private final Collection<ExecutableElement> daoMethods;
+    private final boolean makeAbstract;
 }
