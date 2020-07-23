@@ -1,6 +1,6 @@
 plugins {
-    id 'java'
     id 'java-library'
+    id 'maven-publish'
 }
 
 dependencies {
@@ -15,4 +15,17 @@ dependencies {
     implementation 'com.squareup:javapoet:1.13.0'
     implementation 'org.springframework:spring-jdbc:5.2.7.RELEASE'
     implementation 'org.springframework:spring-context:5.2.7.RELEASE'
+}
+
+java {
+    withJavadocJar()
+    withSourcesJar()
+}
+
+publishing {
+    publications {
+        maven(MavenPublication) {
+            from components.java
+        }
+    }
 }
